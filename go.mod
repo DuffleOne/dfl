@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/squirrel v1.5.0
 	github.com/andygrunwald/cachet v0.0.0-20180404195246-2a1ca51087fd
 	github.com/atotto/clipboard v0.1.4
-	github.com/aws/aws-sdk-go v1.39.0
+	github.com/aws/aws-sdk-go v1.40.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/cuvva/cuvva-public-go v0.0.0-20210115174515-805a42b386cb
 	github.com/danieljoos/wincred v1.1.0
@@ -33,7 +33,6 @@ require (
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/xeipuuv/gojsonschema v1.2.0
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
-	golang.org/x/net v0.0.0-20210119194325-5f4716e94777 // indirect
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	software.sslmate.com/src/go-pkcs12 v0.0.0-20201103104416-57fc603b7f52
 )
