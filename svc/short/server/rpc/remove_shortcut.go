@@ -37,7 +37,7 @@ func (r *RPC) RemoveShortcut(ctx context.Context, req *short.ChangeShortcutReque
 		return err
 	}
 
-	if resource.Owner != authUser.ID && !authUser.Can("short:admin") {
+	if resource.OwnerID != authUser.ID && !authUser.Can("short:admin") {
 		return cher.New(cher.AccessDenied, nil)
 	}
 

@@ -37,7 +37,7 @@ func (r *RPC) SetNSFW(ctx context.Context, req *short.SetNSFWRequest) error {
 		return err
 	}
 
-	if resource.Owner != authUser.ID && !authUser.Can("short:admin") {
+	if resource.OwnerID != authUser.ID && !authUser.Can("short:admin") {
 		return cher.New(cher.AccessDenied, nil)
 	}
 

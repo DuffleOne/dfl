@@ -13,7 +13,7 @@ import (
 )
 
 // UploadFile is an app method that takes in a file and stores it
-func (a *App) UploadFile(ctx context.Context, username string, req *short.CreateFileRequest) (*short.CreateResourceResponse, error) {
+func (a *App) UploadFile(ctx context.Context, ownerID string, req *short.CreateFileRequest) (*short.CreateResourceResponse, error) {
 	// get user
 	bytes := req.File.Bytes()
 	contentType := http.DetectContentType(bytes)
@@ -28,7 +28,7 @@ func (a *App) UploadFile(ctx context.Context, username string, req *short.Create
 	}
 
 	// save to DB
-	fileRes, err := a.DB.Q.NewFile(ctx, fileID, fileKey, username, name, contentType)
+	fileRes, err := a.DB.Q.NewFile(ctx, fileID, fileKey, ownerID, name, contentType)
 	if err != nil {
 		return nil, err
 	}

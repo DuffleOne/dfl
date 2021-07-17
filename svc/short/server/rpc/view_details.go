@@ -32,7 +32,7 @@ func (r *RPC) ViewDetails(ctx context.Context, req *short.IdentifyResource) (*sh
 		return nil, err
 	}
 
-	if resource.Owner != authUser.ID && !authUser.Can("short:admin") {
+	if resource.OwnerID != authUser.ID && !authUser.Can("short:admin") {
 		return nil, cher.New(cher.AccessDenied, nil)
 	}
 

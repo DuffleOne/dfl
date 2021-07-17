@@ -44,7 +44,8 @@ func RenderMD(p *Pipeline) (bool, error) {
 
 		output = append(output, string(markdown.ToHTML(p.contents[rwq.r.ID].bytes, nil, nil)))
 
-		authors[rwq.r.Owner] = struct{}{}
+		// TODO(gm): move to Uwername
+		authors[rwq.r.OwnerID] = struct{}{}
 
 		switch {
 		case rwq.r.Name != nil:

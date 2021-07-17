@@ -9,7 +9,7 @@ CREATE TABLE resources (
     hash text UNIQUE,
     type text NOT NULL,
     name text,
-    owner text NOT NULL,
+    owner_id text NOT NULL,
     link text NOT NULL,
     mime_type text,
     shortcuts text[] NOT NULL DEFAULT '{}',
