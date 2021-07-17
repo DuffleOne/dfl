@@ -18,7 +18,7 @@ func (a *App) GenerateServerCertificate(name string) error {
 		return err
 	}
 
-	rootCA, err := a.loadCertificate(certgen.RootCA, "root")
+	rootCA, err := a.getCertificate(certgen.RootCA, "root")
 	if err != nil {
 		return err
 	}
