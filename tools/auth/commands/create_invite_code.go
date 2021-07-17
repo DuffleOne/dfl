@@ -11,6 +11,7 @@ import (
 
 	"github.com/cuvva/cuvva-public-go/lib/cher"
 	"github.com/manifoldco/promptui"
+	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v2"
 )
 
@@ -27,6 +28,11 @@ var CreateInviteCode = &cli.Command{
 			return err
 		}
 
+		spinner, err := pterm.DefaultSpinner.Start("Creating an invite code")
+		if err != nil {
+			return err
+		}
+
 		app := c.Context.Value(clilib.AppKey).(*app.App)
 
 		res, err := app.Client.CreateInviteCode(c.Context, &auth.CreateInviteCodeRequest{
@@ -35,12 +41,13 @@ var CreateInviteCode = &cli.Command{
 			Scopes:    scopes,
 		})
 		if err != nil {
+			spinner.Fail()
 			return err
 		}
 
-		fmt.Println(clilib.Success("Success!"))
+		spinner.UpdateText(fmt.Sprintf("Code: %s", res.Code))
+		spinner.Success()
 
-		fmt.Printf("Code: %s\n", res.Code)
 		if res.ExpiresAt != nil {
 			fmt.Printf("Expires at: %s\n", res.ExpiresAt.Format(time.RFC3339))
 		}

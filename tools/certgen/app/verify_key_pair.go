@@ -8,10 +8,10 @@ import (
 	"io/ioutil"
 	"path"
 
-	"dfl/lib/cli"
 	"dfl/lib/key"
 	"dfl/tools/certgen"
 
+	"github.com/pterm/pterm"
 	"github.com/tjarratt/babble"
 )
 
@@ -67,10 +67,9 @@ func (a *App) VerifyKeyPair(name string) error {
 
 	switch valid {
 	case true:
-		fmt.Println(cli.Success("VERIFIED"))
+		pterm.BgGreen.Println("VERIFIED")
 	default:
-	case true:
-		fmt.Println(cli.Danger("MISMATCH"))
+		pterm.BgRed.Println("MISMATCH")
 	}
 
 	return nil

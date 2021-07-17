@@ -1,12 +1,11 @@
 package commands
 
 import (
-	"fmt"
-
 	clilib "dfl/lib/cli"
 	"dfl/tools/auth/app"
 
 	"github.com/cuvva/cuvva-public-go/lib/cher"
+	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v2"
 )
 
@@ -25,7 +24,7 @@ var Logout = &cli.Command{
 			return err
 		}
 
-		fmt.Println(clilib.Success("Logged out!"))
+		pterm.Success.Println("Logged out!")
 
 		return nil
 	},

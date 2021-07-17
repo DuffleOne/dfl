@@ -16,6 +16,7 @@ import (
 	"github.com/cuvva/cuvva-public-go/lib/cher"
 	"github.com/dvsekhvalnov/jose2go/base64url"
 	"github.com/manifoldco/promptui"
+	"github.com/pterm/pterm"
 	"github.com/tjarratt/babble"
 	"github.com/urfave/cli/v2"
 )
@@ -53,15 +54,20 @@ func Login(clientID, scopes string) *cli.Command {
 
 			url := fmt.Sprintf("%s/authorize?%s", app.GetAuthURL(), params.Encode())
 
-			fmt.Printf("%s: %s", clilib.Warning("Careful"), "Ensure the state matches: ")
-			fmt.Println(clilib.Success(state))
+			pterm.Warning.Println("Ensure the state matches: ")
+			pterm.Info.Println(state)
 
 			err := openBrowser(url)
 			if err != nil {
-				fmt.Printf("%s: %s", clilib.Warning("Warning"), "Cannot open your browser for you, type in the URL yourself.")
+				pterm.Warning.Println("Cannot open your browser for you, type in the URL yourself.")
 			}
 
 			authToken, err := authTokenPrompt.Run()
+			if err != nil {
+				return err
+			}
+
+			spinner, err := pterm.DefaultSpinner.Start("Logging in")
 			if err != nil {
 				return err
 			}
@@ -85,7 +91,7 @@ func Login(clientID, scopes string) *cli.Command {
 				return err
 			}
 
-			fmt.Println(clilib.Success("Logged in!"))
+			spinner.Success("Logged in!")
 
 			return nil
 		},

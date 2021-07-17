@@ -13,7 +13,6 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/duo-labs/webauthn v0.0.0-20200714211715-1daaee874e43
 	github.com/dvsekhvalnov/jose2go v0.0.0-20201001154944-b09cfaf05951
-	github.com/fatih/color v1.12.0
 	github.com/gen2brain/beeep v0.0.0-20200526185328-e9c15c258e28
 	github.com/go-chi/chi v1.5.4
 	github.com/go-ping/ping v0.0.0-20201115131931-3300c582a663
@@ -24,8 +23,10 @@ require (
 	github.com/koyachi/go-nude v0.0.1
 	github.com/lib/pq v1.10.2
 	github.com/manifoldco/promptui v0.8.0
+	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/nishanths/go-xkcd/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
+	github.com/pterm/pterm v0.12.27
 	github.com/rs/cors v1.8.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/speps/go-hashids v2.0.0+incompatible

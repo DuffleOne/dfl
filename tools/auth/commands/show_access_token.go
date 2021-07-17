@@ -13,6 +13,7 @@ import (
 
 	"github.com/cuvva/cuvva-public-go/lib/cher"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v2"
 )
 
@@ -59,15 +60,15 @@ var ShowAccessToken = &cli.Command{
 		now := time.Now()
 		duration := expiresAt.Sub(now)
 
-		var style func(string) string
+		var style pterm.PrefixPrinter
 
 		if now.After(expiresAt) {
-			style = clilib.Danger
+			style = pterm.Error
 		} else {
-			style = clilib.Success
+			style = pterm.Success
 		}
 
-		fmt.Fprintf(os.Stderr, style(expiresAt.Format(time.RFC3339)))
+		style.Print(expiresAt.Format(time.RFC3339))
 		fmt.Fprintf(os.Stderr, " (%s)\n", duration.Round(time.Second))
 
 		return nil
