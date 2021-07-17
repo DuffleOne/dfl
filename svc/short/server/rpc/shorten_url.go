@@ -21,5 +21,5 @@ func (r *RPC) ShortenURL(ctx context.Context, req *short.CreateURLRequest) (*sho
 		return nil, cher.New(cher.AccessDenied, nil)
 	}
 
-	return r.app.ShortenURL(ctx, req.URL, authUser.Username)
+	return r.app.ShortenURL(ctx, req.URL, authUser.ID)
 }

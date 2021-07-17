@@ -37,7 +37,7 @@ func (r *RPC) DeleteResource(ctx context.Context, req *short.IdentifyResource) e
 		return err
 	}
 
-	if resource.Owner != authUser.Username && !authUser.Can("short:admin") {
+	if resource.Owner != authUser.ID && !authUser.Can("short:admin") {
 		return cher.New(cher.AccessDenied, nil)
 	}
 

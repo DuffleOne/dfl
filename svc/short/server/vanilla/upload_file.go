@@ -39,7 +39,7 @@ func UploadFile(a *app.App, w http.ResponseWriter, r *http.Request) error {
 	var buf bytes.Buffer
 	io.Copy(&buf, file)
 
-	res, err := a.UploadFile(ctx, authUser.Username, &short.CreateFileRequest{
+	res, err := a.UploadFile(ctx, authUser.ID, &short.CreateFileRequest{
 		File: buf,
 		Name: name,
 	})
