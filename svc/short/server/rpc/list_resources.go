@@ -29,7 +29,7 @@ func authorizeRequest(req *short.ListResourcesRequest, u *authlib.AuthUser) erro
 	switch {
 	case u.Can("short:admin"):
 		return nil
-	case req.OwnerID != nil && *req.OwnerID == u.Username:
+	case req.OwnerID != nil && *req.OwnerID == u.ID:
 		return nil
 	default:
 		return cher.New(cher.AccessDenied, nil)
