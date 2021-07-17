@@ -14,7 +14,7 @@ import (
 
 // CreateSignedURL creates a file resource, but instead of accepting the file
 // it generates a signed URL
-func (a *App) CreateSignedURL(ctx context.Context, username string, name *string, contentType string) (*short.CreateSignedURLResponse, error) {
+func (a *App) CreateSignedURL(ctx context.Context, ownerID string, name *string, contentType string) (*short.CreateSignedURLResponse, error) {
 	if !a.SP.SupportsSignedURLs() {
 		return nil, cher.New("signed_urls_unsupported", nil)
 	}
@@ -22,7 +22,7 @@ func (a *App) CreateSignedURL(ctx context.Context, username string, name *string
 	fileID := ksuid.Generate("file").String()
 	fileKey := a.SP.GenerateKey(fileID)
 
-	fileRes, err := a.DB.Q.NewPendingFile(ctx, fileID, fileKey, username, name, contentType)
+	fileRes, err := a.DB.Q.NewPendingFile(ctx, fileID, fileKey, ownerID, name, contentType)
 	if err != nil {
 		return nil, err
 	}

@@ -11,7 +11,7 @@
 			"type": "boolean"
 		},
 
-		"username": {
+		"owner_id": {
 			"type": "string",
 			"minLength": 1
 		},

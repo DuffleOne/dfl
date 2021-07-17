@@ -11,11 +11,11 @@ import (
 )
 
 // ShortenURL shortens a URL
-func (a *App) ShortenURL(ctx context.Context, url, username string) (*short.CreateResourceResponse, error) {
+func (a *App) ShortenURL(ctx context.Context, url, ownerID string) (*short.CreateResourceResponse, error) {
 	urlID := ksuid.Generate("url").String()
 
 	// save to DB
-	urlRes, err := a.DB.Q.NewURL(ctx, urlID, username, url)
+	urlRes, err := a.DB.Q.NewURL(ctx, urlID, ownerID, url)
 	if err != nil {
 		return nil, err
 	}

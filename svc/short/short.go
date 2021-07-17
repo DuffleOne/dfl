@@ -23,7 +23,7 @@ type Resource struct {
 	Serial    int        `json:"-"`
 	Hash      *string    `json:"hash"`
 	Name      *string    `json:"name"`
-	Owner     string     `json:"owner"`
+	OwnerID   string     `json:"owner_id"`
 	Link      string     `json:"link"`
 	NSFW      bool       `json:"nsfw"`
 	MimeType  *string    `json:"mime_type"`
@@ -83,7 +83,7 @@ type ChangeShortcutRequest struct {
 
 type ListResourcesRequest struct {
 	IncludeDeleted bool    `json:"include_deleted"`
-	Username       *string `json:"username"`
+	OwnerID        *string `json:"owner_id"`
 	Limit          *uint64 `json:"limit"`
 	FilterMime     *string `json:"filter_mime"`
 }

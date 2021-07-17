@@ -21,7 +21,7 @@ const (
 )
 
 // resourceColumns is the set of columns to populate into the struct
-var resourceColumns = []string{"id", "type", "serial", "hash", "name", "owner", "link", "nsfw", "mime_type", "shortcuts", "created_at", "deleted_at"}
+var resourceColumns = []string{"id", "type", "serial", "hash", "name", "owner_id", "link", "nsfw", "mime_type", "shortcuts", "created_at", "deleted_at"}
 
 // FindShortcutConflicts returns error if a shortcut is already taken
 func (qw *QueryableWrapper) FindShortcutConflicts(ctx context.Context, shortcuts []string) error {
@@ -116,7 +116,7 @@ func (qw *QueryableWrapper) queryOne(ctx context.Context, query string, values [
 		&res.Serial,
 		&res.Hash,
 		&res.Name,
-		&res.Owner,
+		&res.OwnerID,
 		&res.Link,
 		&res.NSFW,
 		&res.MimeType,
@@ -190,8 +190,8 @@ func (qw *QueryableWrapper) ListResources(ctx context.Context, req *short.ListRe
 		builder = builder.Where(sq.Eq{"deleted_at": nil})
 	}
 
-	if req.Username != nil {
-		builder = builder.Where(sq.Eq{"owner": *req.Username})
+	if req.OwnerID != nil {
+		builder = builder.Where(sq.Eq{"owner_id": *req.OwnerID})
 	}
 
 	if req.FilterMime != nil {
@@ -219,7 +219,7 @@ func (qw *QueryableWrapper) ListResources(ctx context.Context, req *short.ListRe
 	for rows.Next() {
 		o := &short.Resource{}
 
-		err := rows.Scan(&o.ID, &o.Type, &o.Serial, &o.Hash, &o.Name, &o.Owner, &o.Link, &o.NSFW, &o.MimeType, pq.Array(&o.Shortcuts), &o.CreatedAt, &o.DeletedAt)
+		err := rows.Scan(&o.ID, &o.Type, &o.Serial, &o.Hash, &o.Name, &o.OwnerID, &o.Link, &o.NSFW, &o.MimeType, pq.Array(&o.Shortcuts), &o.CreatedAt, &o.DeletedAt)
 		if err != nil {
 			return nil, err
 		}

@@ -54,7 +54,7 @@ func SyntaxHighlighter(p *Pipeline) (bool, error) {
 	for _, i := range p.rwqs {
 		rwq := i
 		titles = append(titles, rwq.qi.Original)
-		authorMap[rwq.r.Owner] = struct{}{}
+		authorMap[rwq.r.OwnerID] = struct{}{} // TODO(gm): move to Username
 
 		language := rwq.qi.Exts.Last()
 

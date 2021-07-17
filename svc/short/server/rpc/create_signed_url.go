@@ -22,5 +22,5 @@ func (r *RPC) CreateSignedURL(ctx context.Context, req *short.CreateSignedURLReq
 		return nil, cher.New(cher.AccessDenied, nil)
 	}
 
-	return r.app.CreateSignedURL(ctx, authUser.Username, req.Name, req.ContentType)
+	return r.app.CreateSignedURL(ctx, authUser.ID, req.Name, req.ContentType)
 }

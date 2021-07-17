@@ -162,7 +162,7 @@ Shorten a URL. It requires `url` which is the URL to shorten.
 	"id": "file_000000BslGI66pAIjV27Uvh4ofWKG",
 	"type": "file",
 	"hash": "dZM",
-	"owner": "Duffleman",
+	"owner_id": "Duffleman",
 	"name": "my_file.png",
 	"link": "i.dfl.mn/file_aaa00",
 	"nsfw": true,
@@ -181,7 +181,7 @@ Shorten a URL. It requires `url` which is the URL to shorten.
 
 ```json
 {
-	"username": "Duffleman",
+	"owner_id": "user_a0001",
 	"include_deleted": false
 }
 ```
@@ -195,7 +195,7 @@ Shorten a URL. It requires `url` which is the URL to shorten.
 		"type": "url",
 		"hash": "Leb",
 		"name": null,
-		"owner": "Duffleman",
+		"owner_id": "Duffleman",
 		"link": "https://google.co.uk",
 		"nsfw": false,
 		"mime_type": null,
@@ -208,7 +208,7 @@ Shorten a URL. It requires `url` which is the URL to shorten.
 		"type": "file",
 		"hash": "GkQ",
 		"name": "my_file.png",
-		"owner": "Duffleman",
+		"owner_id": "Duffleman",
 		"link": "i.dfl.mn/file_000000BualrJMCkEO46lamPFHTwEi",
 		"nsfw": true,
 		"mime_type": "text/plain; charset=utf-8",

@@ -9,13 +9,13 @@ import (
 )
 
 // NewURL inserts a new URL to the database
-func (qw *QueryableWrapper) NewURL(ctx context.Context, id, owner, url string) (*short.Resource, error) {
+func (qw *QueryableWrapper) NewURL(ctx context.Context, id, ownerID, url string) (*short.Resource, error) {
 	b := NewQueryBuilder()
 
 	query, values, err := b.
 		Insert("resources").
-		Columns("id, type, owner, link").
-		Values(id, "url", owner, url).
+		Columns("id, type, owner_id, link").
+		Values(id, "url", ownerID, url).
 		Suffix(fmt.Sprintf("RETURNING %s", strings.Join(resourceColumns, ","))).
 		ToSql()
 	if err != nil {

@@ -50,7 +50,7 @@ func (b Bearer) Check(tokenStr string) (*AuthUser, error) {
 
 	return &AuthUser{
 		ID:       claims.Subject,
-		Username: claims.Subject,
+		Username: claims.Username,
 		Scopes:   claims.Scopes,
 	}, nil
 }
