@@ -31,7 +31,7 @@ var base = certInfo{
 		CommonName: "DFL Root CA",
 	},
 	Country:      []string{"GB"},
-	Organisation: []string{"Duffleman"},
+	Organisation: []string{"DuffleOne"},
 }
 
 var folders = []string{

@@ -199,7 +199,7 @@ func TestQueryInput(t *testing.T) {
 		},
 		{
 			Name:          "multi variant",
-			Input:         "@alva.png,:kyle,a2F.md.html,@duffleman,:test.go,A2O,:xkcd-111",
+			Input:         "@alva.png,:kyle,a2F.md.html,@duffleone,:test.go,A2O,:xkcd-111",
 			ExpectedCount: 7,
 			OutcomeSet: []*QueryInput{
 				{
@@ -222,8 +222,8 @@ func TestQueryInput(t *testing.T) {
 				},
 				{
 					QueryType: Name,
-					Original:  "@duffleman",
-					Input:     "duffleman",
+					Original:  "@duffleone",
+					Input:     "duffleone",
 					Exts:      Extensions([]string{}),
 				},
 				{

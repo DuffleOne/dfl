@@ -55,7 +55,7 @@ func TestParsesContext(t *testing.T) {
 		},
 		{
 			Name:         "understands multifile",
-			Input:        "aMb,@alva,@kyle,:duffleman,m99.json",
+			Input:        "aMb,@alva,@kyle,:duffleone,m99.json",
 			MatchContext: pipelineContext{multifile: true},
 		},
 		{

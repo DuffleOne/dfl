@@ -16,7 +16,7 @@ jobs:
       - uses: docker/metadata-action@v3
         id: docker_meta
         with:
-          images: duffleman/dfl
+          images: duffleone/dfl
           tags: |
             type=sha
             type=ref,event=pr

@@ -13,7 +13,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const repoOwner = "Duffleman"
+const repoOwner = "DuffleOne"
 const repoName = "dfl"
 
 var prefixes = map[string]string{

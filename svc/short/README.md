@@ -35,7 +35,7 @@ Takes a file in the form of multipart/form-data, returns  a short URL that links
 #### Request
 
 ```bash
-curl -X POST -H "Authorization: test" -F file=@duffleman.png https://dfl.mn/upload_file
+curl -X POST -H "Authorization: test" -F file=@duffleone.png https://dfl.mn/upload_file
 ```
 
 #### Response
@@ -162,7 +162,7 @@ Shorten a URL. It requires `url` which is the URL to shorten.
 	"id": "file_000000BslGI66pAIjV27Uvh4ofWKG",
 	"type": "file",
 	"hash": "dZM",
-	"owner_id": "Duffleman",
+	"owner_id": "DuffleOne",
 	"name": "my_file.png",
 	"link": "i.dfl.mn/file_aaa00",
 	"nsfw": true,
@@ -195,7 +195,7 @@ Shorten a URL. It requires `url` which is the URL to shorten.
 		"type": "url",
 		"hash": "Leb",
 		"name": null,
-		"owner_id": "Duffleman",
+		"owner_id": "DuffleOne",
 		"link": "https://google.co.uk",
 		"nsfw": false,
 		"mime_type": null,
@@ -208,7 +208,7 @@ Shorten a URL. It requires `url` which is the URL to shorten.
 		"type": "file",
 		"hash": "GkQ",
 		"name": "my_file.png",
-		"owner_id": "Duffleman",
+		"owner_id": "DuffleOne",
 		"link": "i.dfl.mn/file_000000BualrJMCkEO46lamPFHTwEi",
 		"nsfw": true,
 		"mime_type": "text/plain; charset=utf-8",
@@ -278,6 +278,6 @@ Save to the local filesystem. Please make sure the folder you give it already ex
 
 ```bash
 SHORT_STORAGE_PROVIDER=lfs
-SHORT_LFS_FOLDER=/Users/duffleman/Downloads/dflimg
+SHORT_LFS_FOLDER=/Users/duffleone/Downloads/dflimg
 SHORT_LFS_PERMISSIONS=0777
 ```
