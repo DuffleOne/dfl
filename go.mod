@@ -26,7 +26,7 @@ require (
 	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/nishanths/go-xkcd/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
-	github.com/pterm/pterm v0.12.28
+	github.com/pterm/pterm v0.12.29
 	github.com/rs/cors v1.8.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/speps/go-hashids v2.0.0+incompatible
