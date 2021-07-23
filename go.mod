@@ -10,13 +10,13 @@ require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/cuvva/cuvva-public-go v0.0.0-20210714124647-47babb22e07b
 	github.com/danieljoos/wincred v1.1.1
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/duo-labs/webauthn v0.0.0-20200714211715-1daaee874e43
 	github.com/dvsekhvalnov/jose2go v1.5.0
 	github.com/gen2brain/beeep v0.0.0-20210529141713-5586760f0cc1
 	github.com/go-chi/chi v1.5.4
 	github.com/go-ping/ping v0.0.0-20210506233800-ff8be3320020
 	github.com/go-redis/redis v6.15.9+incompatible
+	github.com/golang-jwt/jwt v3.2.1+incompatible
 	github.com/gomarkdown/markdown v0.0.0-20210514010506-3b9f47219fe7
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/keybase/go-keychain v0.0.0-20201121013009-976c83ec27a6

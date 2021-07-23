@@ -2,7 +2,7 @@ package auth
 
 import (
 	"github.com/cuvva/cuvva-public-go/lib/cher"
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 )
 
 type Bearer struct {

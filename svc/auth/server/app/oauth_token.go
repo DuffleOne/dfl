@@ -12,8 +12,8 @@ import (
 
 	"github.com/cuvva/cuvva-public-go/lib/cher"
 	"github.com/cuvva/cuvva-public-go/lib/ksuid"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/dvsekhvalnov/jose2go/base64url"
+	"github.com/golang-jwt/jwt"
 )
 
 const defaultExpiry = 365 * 24 * time.Hour // 365 days
