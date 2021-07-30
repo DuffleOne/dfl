@@ -7,11 +7,11 @@ require (
 	github.com/alexliesenfeld/health v0.5.1
 	github.com/andygrunwald/cachet v0.0.0-20210622170326-34d0d1408d1c
 	github.com/atotto/clipboard v0.1.4
-	github.com/aws/aws-sdk-go v1.40.6
+	github.com/aws/aws-sdk-go v1.40.11
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/cuvva/cuvva-public-go v0.0.0-20210714124647-47babb22e07b
+	github.com/cuvva/cuvva-public-go v0.0.0-20210729131856-2dca27f950a8
 	github.com/danieljoos/wincred v1.1.1
-	github.com/duo-labs/webauthn v0.0.0-20200714211715-1daaee874e43
+	github.com/duo-labs/webauthn v0.0.0-20210727191636-9f1b88ef44cc
 	github.com/dvsekhvalnov/jose2go v1.5.0
 	github.com/gen2brain/beeep v0.0.0-20210529141713-5586760f0cc1
 	github.com/go-chi/chi v1.5.4
@@ -27,10 +27,9 @@ require (
 	github.com/manifoldco/promptui v0.8.0
 	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/nishanths/go-xkcd/v2 v2.0.1
-	github.com/onsi/ginkgo v1.15.0 // indirect
-	github.com/onsi/gomega v1.10.5 // indirect
+	github.com/onsi/gomega v1.14.0 // indirect
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.3.0 // indirect
+	github.com/prometheus/client_golang v1.11.0 // indirect
 	github.com/pterm/pterm v0.12.29
 	github.com/rs/cors v1.8.0
 	github.com/sirupsen/logrus v1.8.1
@@ -39,7 +38,8 @@ require (
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/xeipuuv/gojsonschema v1.2.0
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
+	golang.org/x/net v0.0.0-20210726213435-c6fcb2dbf985 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	google.golang.org/protobuf v1.25.0 // indirect
+	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 	software.sslmate.com/src/go-pkcs12 v0.0.0-20210415151418-c5206de65a78
 )
