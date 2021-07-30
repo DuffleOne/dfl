@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"dfl/svc/monitor"
-
-	sdk "github.com/andygrunwald/cachet"
+	"github.com/cuvva/cuvva-public-go/lib/cher"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,32 +14,26 @@ var allowedCodes = map[int]struct{}{
 	302: {},
 }
 
-func (a *App) doHTTPS(job *monitor.Job, validate bool) int {
-	return a.doWeb(job, "https", validate)
-}
-
-func (a *App) doHTTP(job *monitor.Job, validate bool) int {
-	return a.doWeb(job, "http", validate)
-}
-
-func (a *App) doWeb(job *monitor.Job, schema string, validate bool) int {
-	url := fmt.Sprintf("%s://%s", schema, job.Host)
+func (a *App) doWeb(host string, schema string, validate bool) error {
+	url := fmt.Sprintf("%s://%s", schema, host)
 
 	c := a.Client
 
-	if validate == false {
+	if !validate {
 		c = a.ClientNoValidate
 	}
 
 	res, err := c.Get(url)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such host") {
-			a.Logger.Warnf("no such host, configuration error for host %s", job.Host)
+			a.Logger.Warnf("no such host, configuration error for host %s", host)
 		}
 
-		a.Logger.WithError(err).Infof("cannot connect to host %s", job.Host)
+		a.Logger.WithError(err).Infof("cannot connect to host %s", host)
 
-		return sdk.ComponentStatusMajorOutage
+		return cher.New("host_down", cher.M{
+			"error": err,
+		})
 	}
 
 	l := a.Logger.WithFields(log.Fields{
@@ -50,12 +42,15 @@ func (a *App) doWeb(job *monitor.Job, schema string, validate bool) int {
 	})
 
 	if _, ok := allowedCodes[res.StatusCode]; !ok {
-		l.Infof("cannot connect to host %s", job.Host)
+		l.Infof("cannot connect to host %s", host)
 
-		return sdk.ComponentStatusMajorOutage
+		return cher.New("host_bad_response", cher.M{
+			"error": err,
+			"res":   res,
+		})
 	}
 
-	l.Infof("successfully connected to host %s", job.Host)
+	l.Infof("successfully connected to host %s", host)
 
-	return sdk.ComponentStatusOperational
+	return nil
 }

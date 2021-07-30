@@ -20,7 +20,7 @@ func (c *Client) ListAllComponents() (components []sdk.Component, err error) {
 		return res.Components, nil
 	}
 
-	// TODO(gm): test this
+	// TODO(lm): test this
 	for i := 1; i < res.Meta.Pagination.TotalPages; i++ {
 		res, _, err = c.Components.GetAll(&sdk.ComponentsQueryParams{
 			Enabled: true,
@@ -32,9 +32,7 @@ func (c *Client) ListAllComponents() (components []sdk.Component, err error) {
 			return nil, err
 		}
 
-		for _, c := range res.Components {
-			components = append(components, c)
-		}
+		components = append(components, res.Components...)
 	}
 
 	return

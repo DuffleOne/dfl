@@ -1,44 +1,45 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
 	"time"
 
-	"dfl/svc/monitor"
 	"dfl/svc/monitor/server/app"
 	"dfl/svc/monitor/server/lib/cachet"
-	jobslib "dfl/svc/monitor/server/lib/jobs"
 
+	"github.com/alexliesenfeld/health"
+	"github.com/alexliesenfeld/health/middleware"
 	cachetSDK "github.com/andygrunwald/cachet"
-	"github.com/cuvva/cuvva-public-go/lib/cher"
+	"github.com/cuvva/cuvva-public-go/lib/config"
 	"github.com/sirupsen/logrus"
 )
 
 type Config struct {
 	Logger *logrus.Logger
+	Server config.Server `envconfig:"server"`
 
 	Debug bool `envconfig:"debug"`
 
 	CachetURL string `envconfig:"cachet_url"`
 	CachetKey string `envconfig:"cachet_key"`
-
-	JobsFile *string `envconfig:"jobs_file"`
-	Jobs     []byte  `envconfig:"jobs"`
 }
 
 func DefaultConfig() Config {
 	return Config{
 		Logger: logrus.New(),
+		Server: config.Server{
+			Addr:     "127.0.0.1:3000",
+			Graceful: 5,
+		},
 
 		Debug: true,
 
 		CachetURL: "https://status.dfl.mn",
 		CachetKey: "",
-
-		Jobs: []byte(`[{"name":"google","component_name":"Google","type":"https","host":"google.com","interval":5}]`),
 	}
 }
 
@@ -59,15 +60,10 @@ func Run(cfg Config) error {
 
 	cachetClient.Authentication.SetTokenAuth(cfg.CachetKey)
 
-	jobs, err := loadJobs(cfg.Jobs, cfg.JobsFile)
-	if err != nil {
-		return err
-	}
-
 	client := &http.Client{
 		Transport: &http.Transport{
 			Dial: (&net.Dialer{
-				Timeout: 5 * time.Second,
+				Timeout: 10 * time.Second,
 			}).Dial,
 		},
 	}
@@ -75,7 +71,7 @@ func Run(cfg Config) error {
 	clientNoValidate := &http.Client{
 		Transport: &http.Transport{
 			Dial: (&net.Dialer{
-				Timeout: 5 * time.Second,
+				Timeout: 10 * time.Second,
 			}).Dial,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
@@ -84,15 +80,16 @@ func Run(cfg Config) error {
 	}
 
 	app := &app.App{
-		Logger:           cfg.Logger,
+		Logger: cfg.Logger,
+		CachetNames: map[string]string{
+			"overseerr":  "Overseerr",
+			"synclounge": "Synclounge",
+			"dfl-auth":   "Auth",
+			"dfl-short":  "Short",
+		},
 		Cachet:           &cachet.Client{Client: cachetClient},
 		Client:           client,
 		ClientNoValidate: clientNoValidate,
-		Jobs:             jobs,
-	}
-
-	if err := app.SyncWithCachet(); err != nil {
-		return fmt.Errorf("cannot sync with cachet: %w", err)
 	}
 
 	if cfg.Debug {
@@ -102,26 +99,24 @@ func Run(cfg Config) error {
 		cfg.Logger.SetLevel(logrus.WarnLevel)
 	}
 
-	wg, err := app.StartWorkers()
-	if err != nil {
-		return fmt.Errorf("cannot start workers: %w", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := app.CacheCachet(ctx); err != nil {
+		return err
 	}
 
-	defer wg.Wait()
+	checker := app.Run(ctx)
+
+	handler := health.NewHandler(checker,
+		health.WithMiddleware(
+			middleware.BasicLogger(),
+		),
+	)
+
+	http.Handle("/health", handler)
 
 	cfg.Logger.Infof("Server running")
 
-	return nil
-}
-
-func loadJobs(jobs []byte, jobFile *string) ([]*monitor.Job, error) {
-	if len(jobs) == 0 && jobFile == nil {
-		return nil, cher.New("invalid_configuration", nil)
-	}
-
-	if jobFile == nil {
-		return jobslib.ParseData(jobs)
-	}
-
-	return jobslib.ParseFromFile(*jobFile)
+	return http.ListenAndServe(cfg.Server.Addr, nil)
 }
