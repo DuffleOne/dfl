@@ -7,7 +7,7 @@ var prodValues = map[string]struct {
 	validate bool
 }{
 	"synclounge": {
-		host:     "synclounge",
+		host:     "synclounge:8088",
 		scheme:   "http",
 		validate: true,
 	},
