@@ -21,35 +21,45 @@ func (a *App) Run(ctx context.Context) health.Checker {
 		health.WithPeriodicCheck(15*time.Second, 1*time.Second, health.Check{
 			Name: "plex",
 			Check: func(ctx context.Context) error {
-				return a.doWeb("plex.lauraflix.uk:32400/web/index.html", "https", false)
+				host, scheme, validate := a.Get("plex", "plex.lauraflix.uk:32400/web/index.html", "https", false)
+
+				return a.doWeb(host, scheme, validate)
 			},
 		}),
 
 		health.WithPeriodicCheck(15*time.Second, 1*time.Second, health.Check{
 			Name: "overseerr",
 			Check: func(ctx context.Context) error {
-				return a.doWeb("requests.lauraflix.uk", "https", true)
+				host, scheme, validate := a.Get("overseerr", "requests.lauraflix.uk", "https", true)
+
+				return a.doWeb(host, scheme, validate)
 			},
 		}),
 
 		health.WithPeriodicCheck(15*time.Second, 2*time.Second, health.Check{
 			Name: "synclounge",
 			Check: func(ctx context.Context) error {
-				return a.doWeb("sync.lauraflix.uk", "https", true)
+				host, scheme, validate := a.Get("synclounge", "sync.lauraflix.uk", "https", true)
+
+				return a.doWeb(host, scheme, validate)
 			},
 		}),
 
 		health.WithPeriodicCheck(15*time.Second, 3*time.Second, health.Check{
 			Name: "dfl-auth",
 			Check: func(ctx context.Context) error {
-				return a.doWeb("auth.dfl.mn", "https", true)
+				host, scheme, validate := a.Get("dfl-auth", "auth.dfl.mn", "https", true)
+
+				return a.doWeb(host, scheme, validate)
 			},
 		}),
 
 		health.WithPeriodicCheck(15*time.Second, 4*time.Second, health.Check{
 			Name: "dfl-short",
 			Check: func(ctx context.Context) error {
-				return a.doWeb("dfl.mn/:alive", "https", true)
+				host, scheme, validate := a.Get("dfl-short", "dfl.mn/:alive", "https", true)
+
+				return a.doWeb(host, scheme, validate)
 			},
 		}),
 	)

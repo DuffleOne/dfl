@@ -80,6 +80,7 @@ func Run(cfg Config) error {
 	}
 
 	app := &app.App{
+		Debug:  cfg.Debug,
 		Logger: cfg.Logger,
 		CachetNames: map[string]string{
 			"overseerr":  "Overseerr",

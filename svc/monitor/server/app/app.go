@@ -10,6 +10,7 @@ import (
 
 // App is a struct for the app methods to attach to
 type App struct {
+	Debug  bool
 	Logger *logrus.Logger
 
 	Cache       *Cache
