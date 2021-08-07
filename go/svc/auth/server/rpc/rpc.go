@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"dfl/lib/auth"
+	authSvc "dfl/svc/auth"
 	"dfl/svc/auth/server/app"
 
 	"github.com/cuvva/cuvva-public-go/lib/config"
@@ -56,8 +57,8 @@ func New(app *app.App, log *logrus.Entry, authHandlers auth.Auth, htmlPages *chi
 		With(
 			request.RequestID,
 			request.Logger(log),
-			auth.Middleware(authHandlers),
 			cors.AllowAll().Handler,
+			auth.Middleware(authHandlers),
 			request.StripPrefix("/1"),
 		).
 		Handle("/1/*", zs)
@@ -77,5 +78,9 @@ func (r *RPC) Run(cfg config.Server) error {
 		return err
 	}
 
+	return nil
+}
+
+func (r *RPC) WithoutAuth() authSvc.Service {
 	return nil
 }

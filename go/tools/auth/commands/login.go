@@ -72,7 +72,7 @@ func Login(clientID, scopes string) *cli.Command {
 				return err
 			}
 
-			res, err := app.GetAuthClient().Token(c.Context, &auth.TokenRequest{
+			res, err := app.GetAuthClient().WithoutAuth().Token(c.Context, &auth.TokenRequest{
 				ClientID:     clientID,
 				GrantType:    "authorization_code",
 				Code:         authToken,

@@ -12,6 +12,8 @@ type Service interface {
 	CreateInviteCode(context.Context, *CreateInviteCodeRequest) (*CreateInviteCodeResponse, error)
 	Token(context.Context, *TokenRequest) (*TokenResponse, error)
 	WhoAmI(context.Context) (*WhoAmIResponse, error)
+
+	WithoutAuth() Service
 }
 
 type User struct {
