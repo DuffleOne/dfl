@@ -52,6 +52,7 @@ func New(app *app.App, log *logrus.Entry, authHandlers auth.Auth, htmlPages *chi
 	mux := chi.NewRouter()
 
 	mux.Use(version.Header("service-auth"))
+	mux.Use(request.StripPrefix("/1/auth"))
 
 	mux.
 		With(
