@@ -24,4 +24,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          asset_paths: '["./go/build/windows/*", "./go/build/macos/*"]'
+          asset_paths: '["./build/windows/*", "./build/macos/*"]'
