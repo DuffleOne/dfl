@@ -30,6 +30,6 @@ jobs:
         with:
           push: true
           context: go/
-          file: ./Dockerfile
+          file: ./go/Dockerfile
           tags: ${{ steps.docker_meta.outputs.tags }}
           platforms: linux/amd64
