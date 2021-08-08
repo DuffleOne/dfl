@@ -22,7 +22,7 @@ func (a *App) CleanInput(args []string) (string, error) {
 }
 
 func (a *App) Trim(in string) string {
-	return strings.TrimPrefix(in, fmt.Sprintf("%s/", a.RootURL))
+	return strings.TrimPrefix(in, fmt.Sprintf("%s/", a.UIURL))
 }
 
 var queryPrompt = promptui.Prompt{

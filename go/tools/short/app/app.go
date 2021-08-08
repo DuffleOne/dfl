@@ -10,32 +10,36 @@ import (
 )
 
 type App struct {
-	RootURL    string
-	AuthURL    string
+	APIURL     string
+	UIURL      string
+	AuthAPIURL string
+	AuthUIURL  string
 	Keychain   keychain.Keychain
 	Client     short.Service
 	AuthClient auth.Service
 }
 
-func New(rootURL, authURL string, kc keychain.Keychain) (*App, error) {
+func New(apiURL, uiURL, authAPIURL, authUIURL string, kc keychain.Keychain) (*App, error) {
 	bearerToken, err := cli.AuthHeader(kc, "short")
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := short.NewClient(fmt.Sprintf("%s/", rootURL), bearerToken), nil
+	client, err := short.NewClient(fmt.Sprintf("%s/", apiURL), bearerToken), nil
 	if err != nil {
 		return nil, err
 	}
 
-	authClient, err := auth.NewClient(fmt.Sprintf("%s/", authURL), bearerToken), nil
+	authClient, err := auth.NewClient(fmt.Sprintf("%s/", authAPIURL), bearerToken), nil
 	if err != nil {
 		return nil, err
 	}
 
 	return &App{
-		RootURL:    rootURL,
-		AuthURL:    authURL,
+		APIURL:     apiURL,
+		UIURL:      uiURL,
+		AuthAPIURL: authAPIURL,
+		AuthUIURL:  authUIURL,
 		Keychain:   kc,
 		Client:     client,
 		AuthClient: authClient,
@@ -50,6 +54,10 @@ func (a *App) GetKeychain() keychain.Keychain {
 	return a.Keychain
 }
 
-func (a *App) GetAuthURL() string {
-	return a.AuthURL
+func (a *App) GetAPIURL() string {
+	return a.AuthAPIURL
+}
+
+func (a *App) GetUIURL() string {
+	return a.AuthUIURL
 }

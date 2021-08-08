@@ -128,7 +128,7 @@ var UploadSigned = &cli.Command{
 		}
 
 		if !singleFile {
-			jointURL := fmt.Sprintf("%s/%s", app.RootURL, strings.Join(all, ","))
+			jointURL := fmt.Sprintf("%s/%s", app.UIURL, strings.Join(all, ","))
 			log.Infof("Download TAR at: %s", jointURL)
 			clilib.WriteClipboard(jointURL)
 		}

@@ -78,7 +78,7 @@ async function register() {
 	console.log(credential);
 
 	try {
-		await auth('/1/2021-01-15/register_confirm', {
+		await auth('1/2021-01-15/register_confirm', {
 			username,
 			inviteCode,
 			challengeId,

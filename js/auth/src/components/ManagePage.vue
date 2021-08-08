@@ -101,7 +101,7 @@ async function whoAmI() {
 	const { authToken } = localState;
 
 	try {
-		const whoami = await auth('/1/2021-01-15/whoami', null, {
+		const whoami = await auth('1/2021-01-15/whoami', null, {
 			headers:  { Authorization: `Bearer ${authToken}` },
 		});
 
@@ -118,7 +118,7 @@ async function listKeys() {
 	const { userId, authToken } = localState;
 
 	try {
-		const keys = await auth('/1/2021-01-15/list_u2f_keys', {
+		const keys = await auth('1/2021-01-15/list_u2f_keys', {
 			userId,
 			includeUnsigned: true,
 		}, {
@@ -141,7 +141,7 @@ async function deleteKey(keyId) {
 	}
 
 	try {
-		await auth('/1/2021-01-15/delete_key', {
+		await auth('1/2021-01-15/delete_key', {
 			userId,
 			keyId,
 		}, {
@@ -164,7 +164,7 @@ async function signKey(keyId) {
 	let prompt;
 
 	try {
-		prompt = await auth('/1/2021-01-15/sign_key_prompt', {
+		prompt = await auth('1/2021-01-15/sign_key_prompt', {
 			userId,
 			keyToSign: keyId,
 		}, {
@@ -187,7 +187,7 @@ async function signKey(keyId) {
 	const credential = await navigator.credentials.get({ publicKey });
 
 	try {
-		await auth('/1/2021-01-15/sign_key_confirm', {
+		await auth('1/2021-01-15/sign_key_confirm', {
 			userId,
 			challengeId,
 			keyToSign: keyId,
@@ -222,7 +222,7 @@ async function addKey() {
 	let prompt;
 
 	try {
-		prompt = await auth('/1/2021-01-15/create_key_prompt', {
+		prompt = await auth('1/2021-01-15/create_key_prompt', {
 			userId,
 		}, {
 			headers: { Authorization: `Bearer ${authToken}` },
@@ -247,7 +247,7 @@ async function addKey() {
 	const credential = await handleCredentialRegister(publicKey);
 
 	try {
-		await auth('/1/2021-01-15/create_key_confirm', {
+		await auth('1/2021-01-15/create_key_confirm', {
 			userId,
 			challengeId,
 			keyName,

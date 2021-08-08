@@ -32,8 +32,8 @@ var AddShortcut = &cli.Command{
 			return err
 		}
 
-		clilib.WriteClipboard(fmt.Sprintf("%s/:%s", app.RootURL, shortcut))
-		clilib.Notify("Added shortcut", fmt.Sprintf("%s/:%s", app.RootURL, shortcut))
+		clilib.WriteClipboard(fmt.Sprintf("%s/:%s", app.UIURL, shortcut))
+		clilib.Notify("Added shortcut", fmt.Sprintf("%s/:%s", app.UIURL, shortcut))
 
 		log.Infof("Done in %s", time.Now().Sub(startTime))
 

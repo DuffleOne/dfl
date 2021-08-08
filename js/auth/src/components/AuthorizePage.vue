@@ -131,7 +131,7 @@ onMounted(async () => {
 		}
 	}
 
-	const client = await auth('/1/2021-01-15/get_client', {
+	const client = await auth('1/2021-01-15/get_client', {
 		clientId: localState.clientId,
 	});
 
@@ -169,7 +169,7 @@ async function login() {
 
 async function loginPrompt() {
 	try {
-		return await auth('/1/2021-01-15/authorize_prompt', {
+		return await auth('1/2021-01-15/authorize_prompt', {
 			username: localState.username,
 		});
 	} catch (error) {
@@ -191,7 +191,7 @@ async function handleCredential(publicKey) {
 
 async function confirm(challengeId, credential) {
 	try {
-		return await auth('/1/2021-01-15/authorize_confirm', {
+		return await auth('1/2021-01-15/authorize_confirm', {
 			responseType: localState.responseType,
 			redirectUri: localState.redirectUri,
 			clientId: localState.client.id,
