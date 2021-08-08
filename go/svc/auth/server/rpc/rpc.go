@@ -23,7 +23,7 @@ type RPC struct {
 	httpServer *http.Server
 }
 
-func New(app *app.App, log *logrus.Entry, authHandlers auth.Auth, htmlPages *chi.Mux) *RPC {
+func New(app *app.App, log *logrus.Entry, authHandlers auth.Auth) *RPC {
 	rpc := &RPC{
 		app: app,
 		log: log,
@@ -64,8 +64,6 @@ func New(app *app.App, log *logrus.Entry, authHandlers auth.Auth, htmlPages *chi
 			request.StripPrefix("/1"),
 		).
 		Handle("/1/*", zs)
-
-	mux.Handle("/*", htmlPages)
 
 	rpc.httpServer = &http.Server{Handler: mux}
 

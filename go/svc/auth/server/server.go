@@ -9,13 +9,11 @@ import (
 	rpclib "dfl/lib/rpc"
 	"dfl/svc/auth/server/app"
 	"dfl/svc/auth/server/db"
-	"dfl/svc/auth/server/html"
 	"dfl/svc/auth/server/rpc"
 
 	"github.com/cuvva/cuvva-public-go/lib/clog"
 	"github.com/cuvva/cuvva-public-go/lib/config"
 	"github.com/duo-labs/webauthn/webauthn"
-	"github.com/go-chi/chi"
 	_ "github.com/lib/pq" // required for the PGSQL driver to be loaded
 )
 
@@ -112,23 +110,13 @@ func Run(cfg Config) error {
 		JWTIssuer: cfg.JWTIssuer,
 	}
 
-	html := htmlPages(app)
-
 	authHandlers := auth.Handlers{
 		auth.CreateScopedBearer(sk.Public(), cfg.JWTIssuer),
 	}
 
-	rpc := rpc.New(app, log, authHandlers, html)
+	rpc := rpc.New(app, log, authHandlers)
 
 	return rpc.Run(cfg.Server)
-}
-
-func htmlPages(app *app.App) *chi.Mux {
-	mux := chi.NewRouter()
-
-	mux.Get("/authorize", wrap(app, html.Authorize))
-
-	return mux
 }
 
 func wrap(a *app.App, fn func(*app.App, http.ResponseWriter, *http.Request) error) func(http.ResponseWriter, *http.Request) {
