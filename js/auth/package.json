@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "serve": "vite preview"
+    "serve": "vite preview",
+	"deploy": "vite build && AWS_PROFILE=dfl aws s3 sync ./dist s3://auth.duffle.one --acl public-read"
   },
   "dependencies": {
     "@babel/core": "^7.15.0",
