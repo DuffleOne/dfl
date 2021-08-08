@@ -63,7 +63,7 @@ func makeRoot(kc keychain.Keychain) {
 				return err
 			}
 
-			app, err := app.New(config.AuthURL, kc)
+			app, err := app.New(config.AuthURL, config.AuthUI, kc)
 			if err != nil {
 				return err
 			}

@@ -9,24 +9,26 @@ import (
 )
 
 type App struct {
-	RootURL  string
+	APIURL   string
+	UIURL    string
 	Keychain keychain.Keychain
 	Client   auth.Service
 }
 
-func New(rootURL string, kc keychain.Keychain) (*App, error) {
+func New(APIURL, UIURL string, kc keychain.Keychain) (*App, error) {
 	bearerToken, err := cli.AuthHeader(kc, "auth")
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := auth.NewClient(fmt.Sprintf("%s/", rootURL), bearerToken), nil
+	client, err := auth.NewClient(fmt.Sprintf("%s/", APIURL), bearerToken), nil
 	if err != nil {
 		return nil, err
 	}
 
 	return &App{
-		RootURL:  rootURL,
+		APIURL:   APIURL,
+		UIURL:    UIURL,
 		Keychain: kc,
 		Client:   client,
 	}, nil
@@ -40,6 +42,10 @@ func (a *App) GetKeychain() keychain.Keychain {
 	return a.Keychain
 }
 
-func (a *App) GetAuthURL() string {
-	return a.RootURL
+func (a *App) GetAPIURL() string {
+	return a.APIURL
+}
+
+func (a *App) GetUIURL() string {
+	return a.UIURL
 }

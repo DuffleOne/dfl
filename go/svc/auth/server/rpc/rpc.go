@@ -37,6 +37,7 @@ func New(app *app.App, log *logrus.Entry, authHandlers auth.Auth, htmlPages *chi
 	zs.Register("register_confirm", "2021-01-15", registerConfirmSchema, rpc.RegisterConfirm)
 	zs.Register("register_prompt", "2021-01-15", registerPromptSchema, rpc.RegisterPrompt)
 	zs.Register("token", "2021-01-15", tokenSchema, rpc.Token)
+	zs.Register("get_client", "2021-01-15", getClientSchema, rpc.GetClient)
 
 	zs.Use(auth.AllowAllAuthenticated)
 	zs.Register("create_client", "2021-01-15", createClientSchema, rpc.CreateClient)

@@ -17,7 +17,7 @@ var Manage = &cli.Command{
 	Action: func(c *cli.Context) error {
 		app := c.Context.Value(clilib.AppKey).(*app.App)
 
-		return openBrowser(fmt.Sprintf("%s/u2f_manage", app.RootURL))
+		return openBrowser(fmt.Sprintf("%s/#/manage", app.UIURL))
 	},
 }
 
@@ -29,6 +29,6 @@ var Register = &cli.Command{
 	Action: func(c *cli.Context) error {
 		app := c.Context.Value(clilib.AppKey).(*app.App)
 
-		return openBrowser(fmt.Sprintf("%s/register", app.RootURL))
+		return openBrowser(fmt.Sprintf("%s/#/register", app.UIURL))
 	},
 }

@@ -179,6 +179,25 @@ Used as part of the OAuth flow to redeem an authorization code and turn it into 
 
 - `redirect_uri` can be `null` if your app has no redirect URIs set up.
 
+### `get_client`
+
+#### Request
+
+```json
+{
+	"client_id": "client_0000aa1",
+}
+```
+
+#### Response
+
+```json
+{
+	"id": "client_0000aa1",
+	"name": "Paw",
+}
+```
+
 ## Browser only endpoints
 
 `GET /authorize`

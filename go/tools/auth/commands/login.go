@@ -52,7 +52,7 @@ func Login(clientID, scopes string) *cli.Command {
 				"code_challenge":        []string{hashed},
 			}
 
-			url := fmt.Sprintf("%s/authorize?%s", app.GetAuthURL(), params.Encode())
+			url := fmt.Sprintf("%s/#/authorize?%s", app.GetUIURL(), params.Encode())
 
 			pterm.Warning.Println("Ensure the state matches: ")
 			pterm.Info.Println(state)
@@ -174,5 +174,6 @@ func openBrowser(url string) error {
 type App interface {
 	GetAuthClient() auth.Service
 	GetKeychain() keychain.Keychain
-	GetAuthURL() string
+	GetAPIURL() string
+	GetUIURL() string
 }

@@ -126,10 +126,7 @@ func Run(cfg Config) error {
 func htmlPages(app *app.App) *chi.Mux {
 	mux := chi.NewRouter()
 
-	mux.Get("/", wrap(app, html.Index))
 	mux.Get("/authorize", wrap(app, html.Authorize))
-	mux.Get("/register", wrap(app, html.Register))
-	mux.Get("/u2f_manage", wrap(app, html.U2FManage))
 
 	return mux
 }
