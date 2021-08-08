@@ -174,6 +174,15 @@ type TokenResponse struct {
 	Expires     int    `json:"expires"`
 }
 
+type GetClientRequest struct {
+	ClientID string `json:"client_id"`
+}
+
+type GetClientResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type ListU2FKeysRequest struct {
 	UserID          string `json:"user_id"`
 	IncludeUnsigned bool   `json:"include_unsigned"`
