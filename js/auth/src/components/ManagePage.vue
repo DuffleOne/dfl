@@ -1,5 +1,5 @@
 <template>
-	<div class="container mx-auto">
+<div class="container mx-auto">
 		<div class="card shadow-lg p-6 mb-6">
 			<div class="form-control">
 				<label class="label">
@@ -43,9 +43,9 @@
 							<td><code>{{ key.id }}</code></td>
 							<td>{{ key.name }}</td>
 							<td>
-								<a class="tooltip" data-tip="Sign" href="#" title="Sign key" v-show="!key.signedAt" v-on:click.prevent="signKey(key.id)"><i class="fa fa-signature text-warning px-2"></i></a>
-								<a class="tooltip" ref="#" v-bind:data-tip="signedByText(key)"><i class="fa fa-info text-info px-2"></i></a>
-								<a class="tooltip" data-tip="Delete" href="#" title="Delete key" v-on:click.prevent="deleteKey(key.id)"><i class="fa fa-ban text-error px-2"></i></a>
+								<a class="tooltip" data-tip="Sign" href="#" v-show="!key.signedAt" v-on:click.prevent="signKey(key.id)"><i class="fa fa-signature text-warning px-2"></i></a>
+								<a class="tooltip" v-bind:data-tip="signedByText(key)" href="#" ><i class="fa fa-info text-info px-2"></i></a>
+								<a class="tooltip" data-tip="Delete" href="#" v-on:click.prevent="deleteKey(key.id)"><i class="fa fa-ban text-error px-2"></i></a>
 							</td>
 						</tr>
 					</tbody>
