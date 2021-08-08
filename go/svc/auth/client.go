@@ -10,6 +10,7 @@ import (
 )
 
 type client struct {
+	BaseURL string
 	*crpc.Client
 }
 
@@ -23,7 +24,19 @@ func NewClient(baseURL string, key *string) Service {
 	}
 
 	return &client{
+		baseURL,
 		crpc.NewClient(baseURL+"/1", httpClient),
+	}
+}
+
+func (c *client) WithoutAuth() Service {
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	return &client{
+		c.BaseURL,
+		crpc.NewClient(c.BaseURL+"/1", httpClient),
 	}
 }
 

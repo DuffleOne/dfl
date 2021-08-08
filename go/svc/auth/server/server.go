@@ -71,7 +71,7 @@ func DefaultConfig() Config {
 		WebAuthn: WebAuthn{
 			ID:          "localhost",
 			DisplayName: "DFL Auth",
-			Origin:      "http://localhost:3000",
+			Origin:      "http://localhost:3001",
 		},
 	}
 }

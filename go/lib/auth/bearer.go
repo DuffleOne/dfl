@@ -38,7 +38,7 @@ func (b Bearer) Check(tokenStr string) (*AuthUser, error) {
 				return nil, cuvvaErr
 			}
 
-			return nil, cher.New(cher.Unauthorized, nil, cher.New("jwt_parsing_failed", cher.M{"error": jwtErr.Inner}))
+			return nil, cher.New(cher.Unauthorized, nil, cher.New("jwt_parsing_failed", cher.M{"error": jwtErr}))
 		}
 
 		return nil, cher.New(cher.Unauthorized, nil, cher.New("jwt_parsing_failed", cher.M{"error": err}))
