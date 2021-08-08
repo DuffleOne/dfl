@@ -4,7 +4,6 @@ RUN apk add --no-cache git
 RUN mkdir -p /usr/local/app
 WORKDIR /usr/local/app
 COPY ./go.mod .
-COPY ./go.sum .
 RUN go mod download
 COPY . /usr/local/app
 RUN go test -v ./...
