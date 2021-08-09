@@ -1,6 +1,6 @@
 <template>
 	<div class="container mx-auto">
-		<div class="flex items-center w-full px-4 py-10 bg-cover card bg-base-200 bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
+		<div class="flex items-center px-4 py-10 bg-cover card bg-base-200 bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 mx-2 sm:mx-0">
 			<div class="card glass lg:card-side text-neutral-content">
 				<figure class="p-6">
 					<img src="https://duffle.one/img/arctic-fox.svg" class="max-h-52">
