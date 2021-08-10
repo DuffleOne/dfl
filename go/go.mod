@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	github.com/Masterminds/squirrel v1.5.0
-	github.com/alexliesenfeld/health v0.5.1
+	github.com/alexliesenfeld/health v0.6.0
 	github.com/andygrunwald/cachet v0.0.0-20210622170326-34d0d1408d1c
 	github.com/atotto/clipboard v0.1.4
 	github.com/aws/aws-sdk-go v1.40.11
