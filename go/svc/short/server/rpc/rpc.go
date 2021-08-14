@@ -50,8 +50,8 @@ func New(app *app.App, log *logrus.Entry, authHandlers auth.Auth, htmlPages, van
 		With(
 			request.RequestID,
 			request.Logger(log),
-			auth.Middleware(authHandlers),
 			cors.AllowAll().Handler,
+			auth.Middleware(authHandlers),
 			request.StripPrefix("/1"),
 		).
 		Handle("/1/*", zs)
