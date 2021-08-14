@@ -6,7 +6,7 @@
 ![Lines of code](https://img.shields.io/tokei/lines/github/duffleone/dfl)
 [![GitHub](https://img.shields.io/github/license/DuffleOne/dfl)](https://github.com/DuffleOne/dfl/blob/main/LICENSE)
 [![GitHub last commit](https://img.shields.io/github/last-commit/duffleone/dfl)](https://github.com/DuffleOne/dfl/commits/main)
-[![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/DuffleOne/dfl)](https://github.com/DuffleOne/dfl/blob/main/go/go.mod)
+[![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/DuffleOne/dfl?filename=go%2Fgo.mod)](https://github.com/DuffleOne/dfl/blob/main/go/go.mod)
 
 ## Installation
 
