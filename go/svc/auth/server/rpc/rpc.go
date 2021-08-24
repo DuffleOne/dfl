@@ -55,6 +55,8 @@ func New(app *app.App, log *logrus.Entry, authHandlers auth.Auth) *RPC {
 	mux.Use(version.Header("service-auth"))
 	mux.Use(request.StripPrefix("/1/auth"))
 
+	mux.Get("/system/health", request.HealthCheck)
+
 	mux.
 		With(
 			request.RequestID,

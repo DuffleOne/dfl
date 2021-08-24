@@ -12,12 +12,12 @@ var prodValues = map[string]struct {
 		validate: true,
 	},
 	"dfl-auth": {
-		host:     "auth",
+		host:     "auth/system/health",
 		scheme:   "http",
 		validate: true,
 	},
 	"dfl-short": {
-		host:     "short",
+		host:     "short/system/health",
 		scheme:   "http",
 		validate: true,
 	},
