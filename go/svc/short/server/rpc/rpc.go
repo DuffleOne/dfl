@@ -46,6 +46,8 @@ func New(app *app.App, log *logrus.Entry, authHandlers auth.Auth, htmlPages, van
 	mux.Use(version.Header("service-short"))
 	mux.Use(request.StripPrefix("/1/short"))
 
+	mux.Get("/system/health", request.HealthCheck)
+
 	mux.
 		With(
 			request.RequestID,
