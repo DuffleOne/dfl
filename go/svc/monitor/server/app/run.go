@@ -48,7 +48,7 @@ func (a *App) Run(ctx context.Context) health.Checker {
 		health.WithPeriodicCheck(15*time.Second, 3*time.Second, health.Check{
 			Name: "dfl-auth",
 			Check: func(ctx context.Context) error {
-				host, scheme, validate := a.Get("dfl-auth", "auth.dfl.mn", "https", true)
+				host, scheme, validate := a.Get("dfl-auth", "api.duffle.one/1/auth/system/health", "https", true)
 
 				return a.doWeb(host, scheme, validate)
 			},
@@ -57,7 +57,7 @@ func (a *App) Run(ctx context.Context) health.Checker {
 		health.WithPeriodicCheck(15*time.Second, 4*time.Second, health.Check{
 			Name: "dfl-short",
 			Check: func(ctx context.Context) error {
-				host, scheme, validate := a.Get("dfl-short", "dfl.mn/:alive", "https", true)
+				host, scheme, validate := a.Get("dfl-short", "api.duffle.one/1/short/system/health", "https", true)
 
 				return a.doWeb(host, scheme, validate)
 			},
