@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go v1.40.22
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/cuvva/cuvva-public-go v0.0.0-20210809133308-807add18508c
-	github.com/danieljoos/wincred v1.1.1
+	github.com/danieljoos/wincred v1.1.2
 	github.com/duo-labs/webauthn v0.0.0-20210727191636-9f1b88ef44cc
 	github.com/dvsekhvalnov/jose2go v1.5.0
 	github.com/gen2brain/beeep v0.0.0-20210529141713-5586760f0cc1
@@ -34,12 +34,12 @@ require (
 	github.com/rs/cors v1.8.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/speps/go-hashids v2.0.0+incompatible
+	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/tjarratt/babble v0.0.0-20210505082055-cbca2a4833c1
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/xeipuuv/gojsonschema v1.2.0
 	golang.org/x/crypto v0.0.0-20210813211128-0a44fdfbc16e
 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e // indirect
 	software.sslmate.com/src/go-pkcs12 v0.0.0-20210415151418-c5206de65a78
 )
