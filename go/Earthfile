@@ -24,3 +24,4 @@ docker:
 	COPY +deps/resources ./resources
 	ENTRYPOINT ./serve
 	SAVE IMAGE ghcr.io/duffleone/dfl:latest
+	RUN --push docker push ghcr.io/duffleone/dfl:latest
