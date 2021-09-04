@@ -1,0 +1,26 @@
+FROM golang:1.17.0-alpine
+WORKDIR /usr/local/app
+ENV CGO_ENABLED=0
+
+deps:
+	COPY go.mod go.sum ./
+	RUN go mod download
+	COPY . /usr/local/app
+	SAVE ARTIFACT /usr/local/app/resources AS LOCAL deps/resources
+
+test:
+	FROM +deps
+	RUN go test -v ./...
+
+build:
+	FROM +deps
+	RUN go build ./cmd/serve/...
+	SAVE ARTIFACT ./serve AS LOCAL build/serve
+
+docker:
+	FROM alpine
+	RUN apk add --no-cache ca-certificates tzdata
+	COPY +build/serve .
+	COPY +deps/resources ./resources
+	ENTRYPOINT ./serve
+	SAVE IMAGE ghcr.io/duffleone/dfl:latest
