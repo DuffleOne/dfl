@@ -14,6 +14,6 @@ FROM alpine
 RUN apk add --no-cache ca-certificates tzdata
 RUN mkdir -p /usr/local/app
 WORKDIR /usr/local/app
-ENTRYPOINT ["./svc"]
+ENTRYPOINT ["./serve"]
 COPY --from=builder /usr/local/app/resources/ resources/
-COPY --from=builder /go/bin/svc .
+COPY --from=builder /go/bin/serve .
