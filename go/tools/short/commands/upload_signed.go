@@ -67,7 +67,9 @@ var UploadSigned = &cli.Command{
 
 				isNude, err := nude.IsNude(filename)
 				if err != nil {
-					return err
+					if err.Error() != "unknown format" {
+						return err
+					}
 				}
 
 				if isNude {
