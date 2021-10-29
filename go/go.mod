@@ -23,7 +23,7 @@ require (
 	github.com/keybase/go-keychain v0.0.0-20201121013009-976c83ec27a6
 	github.com/koyachi/go-nude v0.0.1
 	github.com/kr/pretty v0.3.0 // indirect
-	github.com/lib/pq v1.10.2
+	github.com/lib/pq v1.10.3
 	github.com/manifoldco/promptui v0.8.0
 	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/nishanths/go-xkcd/v2 v2.0.1
