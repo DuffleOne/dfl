@@ -25,8 +25,7 @@ require (
 	github.com/koyachi/go-nude v0.0.1
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/lib/pq v1.10.3
-	github.com/manifoldco/promptui v0.8.0
-	github.com/mattn/go-colorable v0.1.8 // indirect
+	github.com/manifoldco/promptui v0.9.0
 	github.com/nishanths/go-xkcd/v2 v2.0.1
 	github.com/onsi/gomega v1.15.0 // indirect
 	github.com/pkg/errors v0.9.1
