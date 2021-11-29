@@ -7,7 +7,7 @@ require (
 	github.com/alexliesenfeld/health v0.6.0
 	github.com/andygrunwald/cachet v0.0.0-20210622170326-34d0d1408d1c
 	github.com/atotto/clipboard v0.1.4
-	github.com/aws/aws-sdk-go v1.41.14
+	github.com/aws/aws-sdk-go v1.42.13
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/cuvva/cuvva-public-go v0.0.0-20210809133308-807add18508c
 	github.com/danieljoos/wincred v1.1.2
