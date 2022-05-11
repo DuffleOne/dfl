@@ -1,4 +1,4 @@
-FROM golang:1.17.2-alpine as builder
+FROM golang:1.18.2-alpine as builder
 ENV CGO_ENABLED=0
 RUN apk add --no-cache git
 RUN mkdir -p /usr/local/app
