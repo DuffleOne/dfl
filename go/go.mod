@@ -33,7 +33,7 @@ require (
 	github.com/prometheus/client_golang v1.11.0 // indirect
 	github.com/pterm/pterm v0.12.33
 	github.com/rs/cors v1.8.0
-	github.com/sirupsen/logrus v1.8.1
+	github.com/sirupsen/logrus v1.9.0
 	github.com/speps/go-hashids v2.0.0+incompatible
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/tjarratt/babble v0.0.0-20210505082055-cbca2a4833c1
@@ -42,6 +42,5 @@ require (
 	golang.org/x/crypto v0.0.0-20210813211128-0a44fdfbc16e
 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20211029165221-6e7872819dc8 // indirect
 	software.sslmate.com/src/go-pkcs12 v0.0.0-20210415151418-c5206de65a78
 )
