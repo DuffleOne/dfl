@@ -7,7 +7,7 @@ require (
 	github.com/alexliesenfeld/health v0.6.0
 	github.com/andygrunwald/cachet v0.0.0-20210622170326-34d0d1408d1c
 	github.com/atotto/clipboard v0.1.4
-	github.com/aws/aws-sdk-go v1.41.14
+	github.com/aws/aws-sdk-go v1.44.87
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/cuvva/cuvva-public-go v0.0.0-20210809133308-807add18508c
 	github.com/danieljoos/wincred v1.1.2
@@ -40,8 +40,6 @@ require (
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/xeipuuv/gojsonschema v1.2.0
 	golang.org/x/crypto v0.0.0-20210813211128-0a44fdfbc16e
-	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20211029165221-6e7872819dc8 // indirect
 	software.sslmate.com/src/go-pkcs12 v0.0.0-20210415151418-c5206de65a78
 )
