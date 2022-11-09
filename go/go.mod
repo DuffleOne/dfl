@@ -37,7 +37,7 @@ require (
 	github.com/speps/go-hashids v2.0.0+incompatible
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/tjarratt/babble v0.0.0-20210505082055-cbca2a4833c1
-	github.com/urfave/cli/v2 v2.3.0
+	github.com/urfave/cli/v2 v2.23.5
 	github.com/xeipuuv/gojsonschema v1.2.0
 	golang.org/x/crypto v0.0.0-20210813211128-0a44fdfbc16e
 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
