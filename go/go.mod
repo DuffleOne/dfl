@@ -32,7 +32,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0 // indirect
 	github.com/pterm/pterm v0.12.33
-	github.com/rs/cors v1.8.0
+	github.com/rs/cors v1.8.3
 	github.com/sirupsen/logrus v1.8.1
 	github.com/speps/go-hashids v2.0.0+incompatible
 	github.com/stretchr/objx v0.3.0 // indirect
