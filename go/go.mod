@@ -19,7 +19,6 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/gomarkdown/markdown v0.0.0-20210514010506-3b9f47219fe7
 	github.com/google/go-cmp v0.5.6 // indirect
-	github.com/gookit/color v1.5.0 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/keybase/go-keychain v0.0.0-20201121013009-976c83ec27a6
 	github.com/koyachi/go-nude v0.0.1
@@ -31,17 +30,14 @@ require (
 	github.com/onsi/gomega v1.15.0 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0 // indirect
-	github.com/pterm/pterm v0.12.33
+	github.com/pterm/pterm v0.12.54
 	github.com/rs/cors v1.8.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/speps/go-hashids v2.0.0+incompatible
-	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/tjarratt/babble v0.0.0-20210505082055-cbca2a4833c1
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/xeipuuv/gojsonschema v1.2.0
-	golang.org/x/crypto v0.0.0-20210813211128-0a44fdfbc16e
-	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20211029165221-6e7872819dc8 // indirect
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 	software.sslmate.com/src/go-pkcs12 v0.0.0-20210415151418-c5206de65a78
 )
