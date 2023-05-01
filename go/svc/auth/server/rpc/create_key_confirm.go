@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 
+	authlib "dfl/lib/auth"
 	"dfl/svc/auth"
 
 	"github.com/cuvva/cuvva-public-go/lib/cher"
@@ -18,6 +19,14 @@ var createKeyConfirmJSON string
 var createKeyConfirmSchema = gojsonschema.NewStringLoader(createKeyConfirmJSON)
 
 func (r *RPC) CreateKeyConfirm(ctx context.Context, req *auth.CreateKeyConfirmRequest) error {
+	authUser := authlib.GetUserContext(ctx)
+	switch {
+	case authUser.ID == req.UserID && authUser.Can("auth:login"):
+	case authUser.ID != req.UserID && authUser.Can("auth:create_keys"):
+	default:
+		return cher.New(cher.AccessDenied, nil)
+	}
+
 	user, err := r.app.FindUser(ctx, req.UserID)
 	if err != nil {
 		return err

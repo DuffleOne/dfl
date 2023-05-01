@@ -20,7 +20,9 @@ var signKeyConfirmSchema = gojsonschema.NewStringLoader(signKeyConfirmJSON)
 
 func (r *RPC) SignKeyConfirm(ctx context.Context, req *auth.SignKeyConfirmRequest) error {
 	authUser := authlib.GetUserContext(ctx)
-	if authUser.ID != req.UserID {
+	switch {
+	case authUser.ID == req.UserID && authUser.Can("auth:login"):
+	default:
 		return cher.New(cher.AccessDenied, nil)
 	}
 

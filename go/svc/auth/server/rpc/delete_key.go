@@ -17,8 +17,10 @@ var deleteKeySchema = gojsonschema.NewStringLoader(deleteKeyJSON)
 
 func (r *RPC) DeleteKey(ctx context.Context, req *auth.DeleteKeyRequest) error {
 	authUser := authlib.GetUserContext(ctx)
-
-	if authUser.ID != req.UserID && !authUser.Can("auth:delete_keys") {
+	switch {
+	case authUser.ID == req.UserID && authUser.Can("auth:login"):
+	case authUser.ID != req.UserID && authUser.Can("auth:delete_keys"):
+	default:
 		return cher.New(cher.AccessDenied, nil)
 	}
 

@@ -17,7 +17,9 @@ var signKeyPromptSchema = gojsonschema.NewStringLoader(signKeyPromptJSON)
 
 func (r *RPC) SignKeyPrompt(ctx context.Context, req *auth.SignKeyPromptRequest) (*auth.SignKeyPromptResponse, error) {
 	authUser := authlib.GetUserContext(ctx)
-	if authUser.ID != req.UserID {
+	switch {
+	case authUser.ID == req.UserID && authUser.Can("auth:login"):
+	default:
 		return nil, cher.New(cher.AccessDenied, nil)
 	}
 

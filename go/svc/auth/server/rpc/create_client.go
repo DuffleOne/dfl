@@ -17,7 +17,6 @@ var createClientSchema = gojsonschema.NewStringLoader(createClientJSON)
 
 func (r *RPC) CreateClient(ctx context.Context, req *auth.CreateClientRequest) (*auth.CreateClientResponse, error) {
 	authUser := authlib.GetUserContext(ctx)
-
 	if !authUser.Can("auth:create_client") {
 		return nil, cher.New(cher.AccessDenied, nil)
 	}

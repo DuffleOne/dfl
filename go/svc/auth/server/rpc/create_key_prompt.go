@@ -18,7 +18,10 @@ var createKeyPromptSchema = gojsonschema.NewStringLoader(createKeyPromptJSON)
 
 func (r *RPC) CreateKeyPrompt(ctx context.Context, req *auth.CreateKeyPromptRequest) (*auth.CreateKeyPromptResponse, error) {
 	authUser := authlib.GetUserContext(ctx)
-	if authUser.ID != req.UserID && !authUser.Can("auth:create_keys") {
+	switch {
+	case authUser.ID == req.UserID && authUser.Can("auth:login"):
+	case authUser.ID != req.UserID && authUser.Can("auth:create_keys"):
+	default:
 		return nil, cher.New(cher.AccessDenied, nil)
 	}
 
@@ -33,6 +36,9 @@ func (r *RPC) CreateKeyPrompt(ctx context.Context, req *auth.CreateKeyPromptRequ
 	}
 
 	options, session, err := r.app.WA.BeginRegistration(waUser)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, key := range waUser.Credentials {
 		options.Response.CredentialExcludeList = append(options.Response.CredentialExcludeList, protocol.CredentialDescriptor{

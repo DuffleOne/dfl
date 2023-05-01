@@ -17,9 +17,11 @@ var listU2FKeysSchema = gojsonschema.NewStringLoader(listU2FKeysJSON)
 
 func (r *RPC) ListU2FKeys(ctx context.Context, req *auth.ListU2FKeysRequest) ([]*auth.PublicU2FKey, error) {
 	authUser := authlib.GetUserContext(ctx)
-
-	if authUser.ID != req.UserID && !authUser.Can("auth:list_keys") {
-		return nil, cher.New(cher.AccessDenied, nil)
+	switch {
+	case authUser.ID == req.UserID && authUser.Can("auth:login"):
+	case authUser.ID != req.UserID && authUser.Can("auth:list_keys"):
+	default:
+		return []*auth.PublicU2FKey{}, cher.New(cher.AccessDenied, nil)
 	}
 
 	return r.app.ListU2FKeys(ctx, req)
