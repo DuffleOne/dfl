@@ -1,0 +1,7 @@
+version: "3"
+
+tasks:
+  lint:
+    desc: Run golangci-lint against all packages
+    cmds:
+      - golangci-lint run ./...

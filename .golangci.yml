@@ -1,0 +1,64 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - containedctx
+    - contextcheck
+    - errcheck
+    - errcheck
+    - errname
+    - exptostd
+    - goconst
+    - godox
+    - govet
+    - importas
+    - ineffassign
+    - intrange
+    - mirror
+    - misspell
+    - modernize
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - nolintlint
+    - recvcheck
+    - revive
+    - sloglint
+    - staticcheck
+    - tagliatelle
+    - thelper
+    - unconvert
+    - unparam
+    - unused
+    - wastedassign
+    - whitespace
+    # - wrapcheck # would love to enable this one day, but it's too noisy right now
+    - wsl_v5
+  settings:
+    goconst:
+      min-occurrences: 5
+    godox:
+      keywords:
+        - NOMERGE
+    recvcheck:
+      exclusions:
+        - "*.Scan"
+        - "*.Value"
+    revive:
+      rules:
+        - name: var-naming
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+          db: snake
+        overrides:
+          - pkg: client
+            rules:
+              json: snake
+
+formatters:
+  enable:
+    - goimports
