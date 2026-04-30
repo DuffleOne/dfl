@@ -4,4 +4,4 @@ Personal monorepo of small Go libraries I reuse across the companies and places 
 
 Packages:
 
-- [`http`](./http): typed handlers over `net/http`, with structured errors and a pluggable backend. Stdlib `ServeMux` backend lives at [`http/std`](./http/std); other routers (e.g. go-chi) plug in via a small adapter at the call site, see [`examples/chi`](./examples/chi).
+- [`http`](./http): typed handlers over `net/http`, with structured errors. One `Router` type wraps any mux that registers handlers per method+pattern (chi-style) or per stdlib `"METHOD /path"` pattern. See [`examples/std`](./examples/std) and [`examples/chi`](./examples/chi).

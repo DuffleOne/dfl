@@ -26,11 +26,11 @@ import (
 type Factory struct {
 	// New returns a default-configured router and the same instance as an
 	// http.Handler for ServeHTTP dispatch.
-	New func() (dflhttp.Router, http.Handler)
+	New func() (*dflhttp.Router, http.Handler)
 
 	// NewWithCoercer returns a router configured with the given Coercer.
 	// Used by the WithCoercer test only.
-	NewWithCoercer func(dflhttp.Coercer) (dflhttp.Router, http.Handler)
+	NewWithCoercer func(dflhttp.Coercer) (*dflhttp.Router, http.Handler)
 }
 
 // Run executes the full conformance suite against f. Call it from a single

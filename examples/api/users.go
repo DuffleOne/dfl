@@ -29,7 +29,7 @@ func NewUsers() *Users {
 }
 
 // Mount wires up user endpoints on rg.
-func (u *Users) Mount(rg dflhttp.Router) {
+func (u *Users) Mount(rg *dflhttp.Router) {
 	dflhttp.Handle(rg, http.MethodGet, "/users", u.handleList)
 	dflhttp.Handle(rg, http.MethodGet, "/users/{id}", u.handleGet)
 	dflhttp.Handle(rg, http.MethodPost, "/users", u.handleCreate)
@@ -42,7 +42,7 @@ type ListUsersReq struct {
 	Cursor string `query:"cursor"`
 }
 
-func (u *Users) handleList(_ context.Context, req ListUsersReq) ([]User, error) {
+func (u *Users) handleList(_ context.Context, req *ListUsersReq) ([]User, error) {
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 10
@@ -69,16 +69,16 @@ type GetUserReq struct {
 	ID string `path:"id"`
 }
 
-func (u *Users) handleGet(_ context.Context, req GetUserReq) (User, error) {
+func (u *Users) handleGet(_ context.Context, req *GetUserReq) (*User, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
 	user, ok := u.store[req.ID]
 	if !ok {
-		return User{}, dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": req.ID})
+		return nil, dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": req.ID})
 	}
 
-	return user, nil
+	return &user, nil
 }
 
 // CreateUserReq pulls its only field from the JSON body.
@@ -86,9 +86,9 @@ type CreateUserReq struct {
 	Name string `json:"name"`
 }
 
-func (u *Users) handleCreate(_ context.Context, req CreateUserReq) (User, error) {
+func (u *Users) handleCreate(_ context.Context, req *CreateUserReq) (*User, error) {
 	if req.Name == "" {
-		return User{}, dflhttp.New(http.StatusBadRequest, "name_required", nil)
+		return nil, dflhttp.New(http.StatusBadRequest, "name_required", nil)
 	}
 
 	u.mu.Lock()
@@ -101,7 +101,7 @@ func (u *Users) handleCreate(_ context.Context, req CreateUserReq) (User, error)
 	}
 	u.store[user.ID] = user
 
-	return user, nil
+	return &user, nil
 }
 
 // UpdateUserReq mixes a path param and a JSON body field.
@@ -110,7 +110,7 @@ type UpdateUserReq struct {
 	Name string `json:"name"`
 }
 
-func (u *Users) handleUpdate(_ context.Context, req UpdateUserReq) (*User, error) {
+func (u *Users) handleUpdate(_ context.Context, req *UpdateUserReq) (*User, error) {
 	if req.Name == "" {
 		return nil, dflhttp.New(http.StatusBadRequest, "name_required", nil)
 	}
