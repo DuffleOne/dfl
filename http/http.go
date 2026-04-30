@@ -49,14 +49,14 @@ type Middleware func(next HandlerFunc) HandlerFunc
 // hierarchy (samber/oops, validation libs, etc.).
 type Coercer func(error) *ReqError
 
-// Router registers typed handlers. Each backend (stdlib, gin, etc.) provides
-// a concrete implementation; the public surface is the same.
+// Router registers HandlerFuncs. Each backend (stdlib, gin, etc.) provides
+// a concrete implementation; the public surface is the same. To register a
+// typed handler use the generic Handle helper, which compiles down to a
+// HandlerFunc and forwards to Router.Handle.
 type Router interface {
-	// Handle registers handler at method+path. handler must be a function of
-	// shape func(context.Context, Req) (Resp, error); validation happens at
-	// registration time and a mismatch panics. Per-route middleware in mw
-	// runs inside any group middleware already on this router.
-	Handle(method, path string, handler any, mw ...Middleware)
+	// Handle registers h at method+path. Per-route middleware in mw runs
+	// inside any group middleware already on this router.
+	Handle(method, path string, h HandlerFunc, mw ...Middleware)
 
 	// Group returns a sub-router whose routes are prefixed with prefix and
 	// inherit the parent's middleware.
@@ -67,9 +67,14 @@ type Router interface {
 	Use(mw ...Middleware)
 }
 
-// Handle is a typed convenience wrapper over Router.Handle that gives you
-// compile-time checking of the handler shape. Equivalent to calling
-// r.Handle(method, path, handler, mw...) directly.
+// Handle registers a typed handler at method+path on r. The handler shape is
+// checked at compile time; bind setup walks the Req struct's tags once at
+// registration and panics on a malformed Req.
 func Handle[Req, Resp any](r Router, method, path string, handler func(context.Context, Req) (Resp, error), mw ...Middleware) {
-	r.Handle(method, path, handler, mw...)
+	h, err := adapt(handler)
+	if err != nil {
+		panic("dflhttp: " + err.Error())
+	}
+
+	r.Handle(method, path, h, mw...)
 }

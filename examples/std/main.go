@@ -1,4 +1,4 @@
-// Example program demonstrating dflhttp.
+// Example program demonstrating dflhttp on the stdlib ServeMux backend.
 //
 // Endpoints:
 //
@@ -13,36 +13,28 @@
 //
 // Run:
 //
-//	go run ./examples
-//
-// Then:
-//
-//	curl localhost:8080/api/health
-//	curl -X POST localhost:8080/api/ping -i
-//	curl 'localhost:8080/api/users?limit=5'
-//	curl localhost:8080/api/users/1
-//	curl -X POST localhost:8080/api/users -H 'content-type: application/json' -d '{"name":"alice"}'
-//	curl -X PUT  localhost:8080/api/users/1 -H 'content-type: application/json' -d '{"name":"alicia"}'
+//	go run ./examples/std
 package main
 
 import (
 	"log"
 	"net/http"
 
+	"github.com/duffleone/dfl/examples/api"
 	dflstd "github.com/duffleone/dfl/http/std"
 )
 
 func main() {
 	r := dflstd.New()
 
-	api := r.Group("/api")
+	rg := r.Group("/api")
 
-	Health{
+	api.Health{
 		GitCommitSHA: "deadbeef",
 		Version:      "0.1.0",
-	}.Mount(api)
+	}.Mount(rg)
 
-	NewUsers().Mount(api)
+	api.NewUsers().Mount(rg)
 
 	addr := ":8080"
 

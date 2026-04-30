@@ -56,17 +56,10 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
 }
 
-// Handle registers handler at method+path. handler must be a function of
-// shape func(context.Context, Req) (Resp, error). Mismatches panic at
-// registration time.
-func (r *Router) Handle(method, path string, handler any, mw ...dflhttp.Middleware) {
+// Handle registers h at method+path. To register a typed handler, use
+// dflhttp.Handle, which adapts the handler down to a HandlerFunc.
+func (r *Router) Handle(method, path string, h dflhttp.HandlerFunc, mw ...dflhttp.Middleware) {
 	fullPath := r.prefix + path
-
-	h, err := adapt(handler)
-	if err != nil {
-		panic("dflhttp/std: " + err.Error())
-	}
-
 	chain := combineChain(r.middleware, mw)
 	wrapped := applyMiddleware(h, chain)
 	coercer := r.coercer

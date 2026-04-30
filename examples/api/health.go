@@ -1,4 +1,7 @@
-package main
+// Package api hosts the example handlers shared between the std and chi
+// example programs. It's deliberately backend-agnostic: handlers take
+// dflhttp.Router and don't know which implementation they're mounted on.
+package api
 
 import (
 	"context"
@@ -16,10 +19,10 @@ type Health struct {
 
 // Mount wires up health endpoints on rg.
 func (h Health) Mount(rg dflhttp.Router) {
-	rg.Handle(http.MethodGet, "/health", h.handleHealth)
-	rg.Handle(http.MethodGet, "/sha", h.handleSHA)
-	rg.Handle(http.MethodGet, "/version", h.handleVersion)
-	rg.Handle(http.MethodPost, "/ping", h.handlePing)
+	dflhttp.Handle(rg, http.MethodGet, "/health", h.handleHealth)
+	dflhttp.Handle(rg, http.MethodGet, "/sha", h.handleSHA)
+	dflhttp.Handle(rg, http.MethodGet, "/version", h.handleVersion)
+	dflhttp.Handle(rg, http.MethodPost, "/ping", h.handlePing)
 }
 
 // String resp gets JSON-encoded as "up", with content-type application/json.

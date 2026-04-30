@@ -1,4 +1,4 @@
-package std
+package http
 
 import (
 	"encoding"
@@ -10,8 +10,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-
-	dflhttp "github.com/duffleone/dfl/http"
 )
 
 type binder struct {
@@ -19,6 +17,7 @@ type binder struct {
 	queries []paramBind
 	body    []bodyBind
 	hasBody bool
+	noop    bool
 }
 
 type paramBind struct {
@@ -32,15 +31,24 @@ type bodyBind struct {
 	fieldIdx []int
 }
 
-// buildBinder reflects on the Req type once at registration time and produces
-// a binder that knows where each field comes from (path, query, or body).
+var (
+	emptyType    = reflect.TypeFor[Empty]()
+	emptyPtrType = reflect.TypeFor[*Empty]()
+)
+
+func isEmptyType(t reflect.Type) bool {
+	return t == emptyType || t == emptyPtrType
+}
+
+// buildBinder reflects on t once at registration time and produces a binder
+// that knows where each field of t comes from (path, query, or body).
 func buildBinder(t reflect.Type) (*binder, error) {
-	if isEmpty(t) {
-		return &binder{}, nil
+	if isEmptyType(t) {
+		return &binder{noop: true}, nil
 	}
 
 	if t.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("req must be a struct or dflhttp.Empty, got %s", t.Kind())
+		return nil, fmt.Errorf("req must be a struct or http.Empty, got %s", t.Kind())
 	}
 
 	b := &binder{}
@@ -82,15 +90,22 @@ func buildBinder(t reflect.Type) (*binder, error) {
 	return b, nil
 }
 
-func (b *binder) bind(r *http.Request, dst reflect.Value) error {
+// bind populates dst (a pointer to a Req value) from r.
+func (b *binder) bind(r *http.Request, dst any) error {
+	if b.noop {
+		return nil
+	}
+
+	v := reflect.ValueOf(dst).Elem()
+
 	for _, p := range b.paths {
-		v := r.PathValue(p.key)
-		if v == "" {
+		val := r.PathValue(p.key)
+		if val == "" {
 			continue
 		}
 
-		if err := p.setter(dst.FieldByIndex(p.fieldIdx), v); err != nil {
-			return dflhttp.New(http.StatusBadRequest, "invalid_path_param", dflhttp.M{
+		if err := p.setter(v.FieldByIndex(p.fieldIdx), val); err != nil {
+			return New(http.StatusBadRequest, "invalid_path_param", M{
 				"param": p.key,
 				"error": err.Error(),
 			})
@@ -98,13 +113,13 @@ func (b *binder) bind(r *http.Request, dst reflect.Value) error {
 	}
 
 	for _, q := range b.queries {
-		v := r.URL.Query().Get(q.key)
-		if v == "" {
+		val := r.URL.Query().Get(q.key)
+		if val == "" {
 			continue
 		}
 
-		if err := q.setter(dst.FieldByIndex(q.fieldIdx), v); err != nil {
-			return dflhttp.New(http.StatusBadRequest, "invalid_query_param", dflhttp.M{
+		if err := q.setter(v.FieldByIndex(q.fieldIdx), val); err != nil {
+			return New(http.StatusBadRequest, "invalid_query_param", M{
 				"param": q.key,
 				"error": err.Error(),
 			})
@@ -112,7 +127,7 @@ func (b *binder) bind(r *http.Request, dst reflect.Value) error {
 	}
 
 	if b.hasBody {
-		if err := b.bindBody(r, dst); err != nil {
+		if err := b.bindBody(r, v); err != nil {
 			return err
 		}
 	}
@@ -124,7 +139,7 @@ func (b *binder) bindBody(r *http.Request, dst reflect.Value) error {
 	if ct := r.Header.Get("Content-Type"); ct != "" {
 		mt, _, _ := strings.Cut(ct, ";")
 		if strings.TrimSpace(mt) != "application/json" {
-			return dflhttp.New(http.StatusUnsupportedMediaType, "unsupported_media_type", dflhttp.M{
+			return New(http.StatusUnsupportedMediaType, "unsupported_media_type", M{
 				"contentType": ct,
 			})
 		}
@@ -134,7 +149,7 @@ func (b *binder) bindBody(r *http.Request, dst reflect.Value) error {
 
 	err := json.NewDecoder(r.Body).Decode(&raw)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return dflhttp.New(http.StatusBadRequest, "invalid_body", dflhttp.M{"error": err.Error()})
+		return New(http.StatusBadRequest, "invalid_body", M{"error": err.Error()})
 	}
 
 	for _, fb := range b.body {
@@ -144,7 +159,7 @@ func (b *binder) bindBody(r *http.Request, dst reflect.Value) error {
 		}
 
 		if err := json.Unmarshal(rm, dst.FieldByIndex(fb.fieldIdx).Addr().Interface()); err != nil {
-			return dflhttp.New(http.StatusBadRequest, "invalid_body_field", dflhttp.M{
+			return New(http.StatusBadRequest, "invalid_body_field", M{
 				"field": fb.key,
 				"error": err.Error(),
 			})

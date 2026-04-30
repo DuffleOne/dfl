@@ -100,10 +100,20 @@ func (db *DB) TxRead(ctx context.Context, f func(tx pgx.Tx) error) error {
 func (db *DB) TxSerializable(ctx context.Context, f func(tx pgx.Tx) error) error {
 	opts := pgx.TxOptions{IsoLevel: pgx.Serializable}
 
+	return retrySerializable(ctx, maxSerializableTxRetries, func() error {
+		return db.tx(ctx, opts, f)
+	})
+}
+
+// retrySerializable runs op up to maxRetries+1 times (one initial try plus
+// maxRetries retries). It retries only when op returns a serialization
+// failure; any other error, or a cancelled context, ends the loop. Between
+// attempts it logs a warn through slog.
+func retrySerializable(ctx context.Context, maxRetries int, op func() error) error {
 	var err error
 
-	for attempt := range maxSerializableTxRetries + 1 {
-		err = db.tx(ctx, opts, f)
+	for attempt := range maxRetries + 1 {
+		err = op()
 		if err == nil {
 			return nil
 		}
@@ -112,7 +122,7 @@ func (db *DB) TxSerializable(ctx context.Context, f func(tx pgx.Tx) error) error
 			return err
 		}
 
-		if attempt == maxSerializableTxRetries {
+		if attempt == maxRetries {
 			break
 		}
 
