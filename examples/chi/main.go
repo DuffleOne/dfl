@@ -14,11 +14,16 @@ import (
 
 	"github.com/duffleone/dfl/examples/api"
 	dflhttp "github.com/duffleone/dfl/http"
+	"github.com/duffleone/dfl/http/oops"
 	"github.com/go-chi/chi/v5"
 )
 
 func main() {
-	r := dflhttp.NewRouter(chi.NewMux())
+	r := dflhttp.NewRouter(
+		chi.NewMux(),
+		dflhttp.WithCoercer(oops.Coerce),
+		dflhttp.WithRequestParser(dflhttp.DefaultRequestParser),
+	)
 
 	rg := r.Group("/api")
 

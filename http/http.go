@@ -84,11 +84,12 @@ type PatternMux interface {
 // Handle (or the typed package-level Handle), then hand the Router to
 // http.Server.
 type Router struct {
-	mux        Mux
-	register   func(method, pattern string, h http.HandlerFunc)
-	coercer    Coercer
-	prefix     string
-	middleware []Middleware
+	mux           Mux
+	register      func(method, pattern string, h http.HandlerFunc)
+	coercer       Coercer
+	requestParser RequestParser
+	prefix        string
+	middleware    []Middleware
 }
 
 var _ http.Handler = (*Router)(nil)
@@ -101,6 +102,14 @@ type Option func(*Router)
 func WithCoercer(c Coercer) Option {
 	return func(r *Router) {
 		r.coercer = c
+	}
+}
+
+// WithRequestParser sets the RequestParser used to populate typed Req
+// values from the raw *http.Request. Defaults to DefaultRequestParser.
+func WithRequestParser(p RequestParser) Option {
+	return func(r *Router) {
+		r.requestParser = p
 	}
 }
 
@@ -183,7 +192,7 @@ func (r *Router) Use(mw ...Middleware) {
 // also accepts value Req/Resp shapes, but the pointer form is what every
 // example uses.
 func Handle[Req, Resp any](r *Router, method, path string, handler func(context.Context, Req) (Resp, error), mw ...Middleware) {
-	h, err := adapt(handler)
+	h, err := r.adapt(handler)
 	if err != nil {
 		panic("dflhttp: " + err.Error())
 	}

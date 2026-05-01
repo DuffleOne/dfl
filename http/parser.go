@@ -10,7 +10,82 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+// RequestParser populates a typed request value from an *http.Request. The
+// generic Parse method lets a single parser handle every handler shape in
+// the router; routers that don't override use DefaultRequestParser.
+//
+// Custom parsers are useful when you want a binding model dflhttp doesn't
+// ship out of the box (form bodies, msgpack, gRPC-style transcoding, an
+// auth-context-aware Req that pulls the caller from middleware, etc).
+type RequestParser interface {
+	Parse[Req any](r *http.Request) (Req, error)
+}
+
+// preparable is an optional interface a RequestParser can satisfy to
+// validate a Req shape at handler registration. The default parser
+// implements it via PrepareFor; adapt type-asserts and calls it so tag
+// errors surface eagerly rather than on the first request.
+type preparable interface {
+	PrepareFor[Req any]() error
+}
+
+// DefaultRequestParser is the parser dflhttp uses when no other is set on
+// the Router via WithRequestParser. It binds fields by struct tag:
+//
+//	`path:"name"`  — pulled from r.PathValue(name)
+//	`query:"name"` — pulled from r.URL.Query().Get(name)
+//	`json:"name"`  — pulled from the JSON request body
+//
+// Per-Req binding plans are cached, so the reflect cost is paid once per
+// (type, parser) pair.
+var DefaultRequestParser RequestParser = &defaultRequestParser{}
+
+type defaultRequestParser struct {
+	cache sync.Map // reflect.Type -> *binder
+}
+
+func (p *defaultRequestParser) Parse[Req any](r *http.Request) (Req, error) {
+	var req Req
+
+	b, err := p.binderFor(reflect.TypeFor[Req]())
+	if err != nil {
+		return req, err
+	}
+
+	if err := b.bind(r, &req); err != nil {
+		return req, err
+	}
+
+	return req, nil
+}
+
+// PrepareFor compiles and caches the binding plan for Req. adapt calls this
+// at registration to surface tag errors before the first request.
+func (p *defaultRequestParser) PrepareFor[Req any]() error {
+	_, err := p.binderFor(reflect.TypeFor[Req]())
+
+	return err
+}
+
+func (p *defaultRequestParser) binderFor(t reflect.Type) (*binder, error) {
+	if cached, ok := p.cache.Load(t); ok {
+		return cached.(*binder), nil
+	}
+
+	b, err := buildBinder(t)
+	if err != nil {
+		return nil, err
+	}
+
+	actual, _ := p.cache.LoadOrStore(t, b)
+
+	return actual.(*binder), nil
+}
+
+// --- internal binder, the only place reflection lives ---
 
 type binder struct {
 	paths   []paramBind
@@ -40,16 +115,9 @@ func isEmptyType(t reflect.Type) bool {
 	return t == emptyType || t == emptyPtrType
 }
 
-// buildBinderFor is the generic entry point used by adapt. It keeps
-// reflect.TypeFor out of adapt.go so reflection stays inside the binder,
-// where it's already needed for tag walking.
-func buildBinderFor[T any]() (*binder, error) {
-	return buildBinder(reflect.TypeFor[T]())
-}
-
-// buildBinder reflects on t once at registration time and produces a binder
-// that knows where each field of t comes from (path, query, or body).
-// t may be a struct, a pointer to a struct, Empty, or *Empty.
+// buildBinder reflects on t once and returns a binder that knows where each
+// field of t comes from (path, query, or body). t may be a struct, a
+// pointer to a struct, Empty, or *Empty.
 func buildBinder(t reflect.Type) (*binder, error) {
 	if isEmptyType(t) {
 		return &binder{noop: true}, nil
@@ -102,10 +170,9 @@ func buildBinder(t reflect.Type) (*binder, error) {
 	return b, nil
 }
 
-// bind populates dst (a pointer to a Req value) from r. dst is always *Req,
-// where Req can itself be a pointer to a struct: when adapt declares
-// `var req Req` and Req is *Foo, dst here is **Foo, so we walk one
-// indirection and allocate the inner *Foo.
+// bind populates dst (a *Req) from r. When Req is itself a pointer to a
+// struct, dst is **Struct; we walk one indirection and allocate the inner
+// pointer so the binder can write into a real value.
 func (b *binder) bind(r *http.Request, dst any) error {
 	if b.noop {
 		return nil
@@ -195,8 +262,8 @@ func (b *binder) bindBody(r *http.Request, dst reflect.Value) error {
 var textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()
 
 // stringSetter returns a function that parses a string into a typed
-// reflect.Value. Used for path and query params, which are always strings on
-// the wire. Supports the basic kinds plus encoding.TextUnmarshaler.
+// reflect.Value. Used for path and query params, which are always strings
+// on the wire. Supports the basic kinds plus encoding.TextUnmarshaler.
 func stringSetter(t reflect.Type) (func(reflect.Value, string) error, error) {
 	if reflect.PointerTo(t).Implements(textUnmarshalerType) {
 		return func(v reflect.Value, s string) error {

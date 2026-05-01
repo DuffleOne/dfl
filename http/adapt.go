@@ -6,18 +6,26 @@ import (
 	"net/http"
 )
 
-// adapt produces a HandlerFunc from a typed handler. Reflection is confined
-// to the binder, which uses it solely to walk the Req struct's tags and
-// (when Req is a pointer) to allocate the value on first bind. Adapt
-// itself uses no reflection at all.
+// adapt wires a typed handler into a HandlerFunc the underlying mux can
+// register. It looks up the Router's RequestParser (DefaultRequestParser
+// if unset), gives the parser a chance to verify the Req shape at
+// registration, and at request time delegates Req parsing to it before
+// invoking the handler and writing the response.
 //
-// Req and Resp can be any shape: struct, *struct, Empty, *Empty. The pointer
-// convention is what handlers in this codebase use, but the framework
-// doesn't insist on it.
-func adapt[Req, Resp any](handler func(context.Context, Req) (Resp, error)) (HandlerFunc, error) {
-	b, err := buildBinderFor[Req]()
-	if err != nil {
-		return nil, err
+// All reflection lives behind RequestParser. Adapt itself touches no
+// reflect — Req and Resp are pure type parameters as far as it's
+// concerned, only known to be either a *Empty (or Empty) for 204, or
+// something else for JSON encoding.
+func (r *Router) adapt[Req, Resp any](handler func(context.Context, Req) (Resp, error)) (HandlerFunc, error) {
+	parser := r.requestParser
+	if parser == nil {
+		parser = DefaultRequestParser
+	}
+
+	if pre, ok := parser.(preparable); ok {
+		if err := pre.PrepareFor[Req](); err != nil {
+			return nil, err
+		}
 	}
 
 	isEmptyResp := false
@@ -28,14 +36,13 @@ func adapt[Req, Resp any](handler func(context.Context, Req) (Resp, error)) (Han
 		isEmptyResp = true
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) error {
-		var req Req
-
-		if err := b.bind(r, &req); err != nil {
+	return func(w http.ResponseWriter, httpReq *http.Request) error {
+		req, err := parser.Parse[Req](httpReq)
+		if err != nil {
 			return err
 		}
 
-		resp, err := handler(r.Context(), req)
+		resp, err := handler(httpReq.Context(), req)
 		if err != nil {
 			return err
 		}
