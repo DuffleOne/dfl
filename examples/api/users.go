@@ -42,7 +42,13 @@ type ListUsersReq struct {
 	Cursor string `query:"cursor"`
 }
 
-func (u *Users) handleList(_ context.Context, req *ListUsersReq) ([]User, error) {
+// ListUsersResp wraps the slice so the handler resp can be a pointer to a
+// struct, in line with the rest of the API.
+type ListUsersResp struct {
+	Users []User `json:"users"`
+}
+
+func (u *Users) handleList(_ context.Context, req *ListUsersReq) (*ListUsersResp, error) {
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 10
@@ -61,7 +67,7 @@ func (u *Users) handleList(_ context.Context, req *ListUsersReq) ([]User, error)
 		out = append(out, user)
 	}
 
-	return out, nil
+	return &ListUsersResp{Users: out}, nil
 }
 
 // GetUserReq pulls its only field from the URL path.

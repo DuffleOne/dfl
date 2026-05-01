@@ -90,8 +90,8 @@ func stringRespIsJSONEncoded(t *testing.T, f Factory) {
 	r, h := f.New()
 
 	dflhttp.Handle(r, http.MethodGet, "/health",
-		func(_ context.Context, _ dflhttp.Empty) (string, error) {
-			return "up", nil
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return new("up"), nil
 		})
 
 	rec := do(h, http.MethodGet, "/health", nil, nil)
@@ -117,8 +117,8 @@ func emptyRespReturns204(t *testing.T, f Factory) {
 	r, h := f.New()
 
 	dflhttp.Handle(r, http.MethodPost, "/ping",
-		func(_ context.Context, _ dflhttp.Empty) (dflhttp.Empty, error) {
-			return dflhttp.Empty{}, nil
+		func(_ context.Context, _ *dflhttp.Empty) (*dflhttp.Empty, error) {
+			return &dflhttp.Empty{}, nil
 		})
 
 	rec := do(h, http.MethodPost, "/ping", nil, nil)
@@ -141,7 +141,7 @@ func emptyPointerRespReturns204(t *testing.T, f Factory) {
 	r, h := f.New()
 
 	dflhttp.Handle(r, http.MethodPost, "/ping",
-		func(_ context.Context, _ dflhttp.Empty) (*dflhttp.Empty, error) {
+		func(_ context.Context, _ *dflhttp.Empty) (*dflhttp.Empty, error) {
 			return nil, nil //nolint:nilnil // tests the (*Empty, nil) shape used by examples/health.go
 		})
 
@@ -167,10 +167,10 @@ func pathBinding(t *testing.T, f Factory) {
 	var captured pathReq
 
 	dflhttp.Handle(r, http.MethodGet, "/items/{id}/n/{count}",
-		func(_ context.Context, req pathReq) (string, error) {
-			captured = req
+		func(_ context.Context, req *pathReq) (*string, error) {
+			captured = *req
 
-			return "ok", nil
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodGet, "/items/abc/n/42", nil, nil)
@@ -196,8 +196,8 @@ func pathBindingInvalid(t *testing.T, f Factory) {
 	r, h := f.New()
 
 	dflhttp.Handle(r, http.MethodGet, "/n/{n}",
-		func(_ context.Context, _ intPathReq) (string, error) {
-			return "ok", nil
+		func(_ context.Context, _ *intPathReq) (*string, error) {
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodGet, "/n/notanumber", nil, nil)
@@ -231,10 +231,10 @@ func queryBinding(t *testing.T, f Factory) {
 	var captured queryReq
 
 	dflhttp.Handle(r, http.MethodGet, "/search",
-		func(_ context.Context, req queryReq) (string, error) {
-			captured = req
+		func(_ context.Context, req *queryReq) (*string, error) {
+			captured = *req
 
-			return "ok", nil
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodGet, "/search?limit=5&q=foo&open=true", nil, nil)
@@ -258,10 +258,10 @@ func queryBindingMissingLeavesZero(t *testing.T, f Factory) {
 	var captured queryReq
 
 	dflhttp.Handle(r, http.MethodGet, "/search",
-		func(_ context.Context, req queryReq) (string, error) {
-			captured = req
+		func(_ context.Context, req *queryReq) (*string, error) {
+			captured = *req
 
-			return "ok", nil
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodGet, "/search", nil, nil)
@@ -282,8 +282,8 @@ func queryBindingInvalid(t *testing.T, f Factory) {
 	r, h := f.New()
 
 	dflhttp.Handle(r, http.MethodGet, "/search",
-		func(_ context.Context, _ queryReq) (string, error) {
-			return "ok", nil
+		func(_ context.Context, _ *queryReq) (*string, error) {
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodGet, "/search?open=maybe", nil, nil)
@@ -315,10 +315,10 @@ func bodyBinding(t *testing.T, f Factory) {
 	var captured bodyReq
 
 	dflhttp.Handle(r, http.MethodPost, "/users",
-		func(_ context.Context, req bodyReq) (string, error) {
-			captured = req
+		func(_ context.Context, req *bodyReq) (*string, error) {
+			captured = *req
 
-			return "ok", nil
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodPost, "/users", strings.NewReader(`{"name":"alice","age":30}`), jsonHeaders())
@@ -340,8 +340,8 @@ func bodyBindingRejectsNonJSON(t *testing.T, f Factory) {
 	r, h := f.New()
 
 	dflhttp.Handle(r, http.MethodPost, "/users",
-		func(_ context.Context, _ bodyReq) (string, error) {
-			return "ok", nil
+		func(_ context.Context, _ *bodyReq) (*string, error) {
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodPost, "/users", strings.NewReader("hi"),
@@ -359,8 +359,8 @@ func bodyBindingMalformedJSON(t *testing.T, f Factory) {
 	r, h := f.New()
 
 	dflhttp.Handle(r, http.MethodPost, "/users",
-		func(_ context.Context, _ bodyReq) (string, error) {
-			return "ok", nil
+		func(_ context.Context, _ *bodyReq) (*string, error) {
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodPost, "/users", strings.NewReader("{not json"), jsonHeaders())
@@ -385,10 +385,10 @@ func pathPlusBody(t *testing.T, f Factory) {
 	var captured updateReq
 
 	dflhttp.Handle(r, http.MethodPut, "/users/{id}",
-		func(_ context.Context, req updateReq) (string, error) {
-			captured = req
+		func(_ context.Context, req *updateReq) (*string, error) {
+			captured = *req
 
-			return "ok", nil
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodPut, "/users/42", strings.NewReader(`{"name":"alice"}`), jsonHeaders())
@@ -414,10 +414,10 @@ func bodyDoesntBleedToNonJSONFields(t *testing.T, f Factory) {
 	var captured updateReq
 
 	dflhttp.Handle(r, http.MethodPut, "/users/{id}",
-		func(_ context.Context, req updateReq) (string, error) {
-			captured = req
+		func(_ context.Context, req *updateReq) (*string, error) {
+			captured = *req
 
-			return "ok", nil
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodPut, "/users/42",
@@ -440,8 +440,8 @@ func reqErrorPropagates(t *testing.T, f Factory) {
 	r, h := f.New()
 
 	dflhttp.Handle(r, http.MethodGet, "/missing",
-		func(_ context.Context, _ dflhttp.Empty) (string, error) {
-			return "", dflhttp.New(http.StatusNotFound, "not_found", dflhttp.M{"id": "x"})
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return nil, dflhttp.New(http.StatusNotFound, "not_found", dflhttp.M{"id": "x"})
 		})
 
 	rec := do(h, http.MethodGet, "/missing", nil, nil)
@@ -472,8 +472,8 @@ func genericErrorBecomes500(t *testing.T, f Factory) {
 	r, h := f.New()
 
 	dflhttp.Handle(r, http.MethodGet, "/boom",
-		func(_ context.Context, _ dflhttp.Empty) (string, error) {
-			return "", errors.New("kaboom")
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return nil, errors.New("kaboom")
 		})
 
 	rec := do(h, http.MethodGet, "/boom", nil, nil)
@@ -501,8 +501,8 @@ func groupPrefixesPaths(t *testing.T, f Factory) {
 	api := r.Group("/api")
 
 	dflhttp.Handle(api, http.MethodGet, "/health",
-		func(_ context.Context, _ dflhttp.Empty) (string, error) {
-			return "up", nil
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return new("up"), nil
 		})
 
 	rec := do(h, http.MethodGet, "/api/health", nil, nil)
@@ -539,10 +539,10 @@ func middlewareWraps(t *testing.T, f Factory) {
 	r.Use(track("inner"))
 
 	dflhttp.Handle(r, http.MethodGet, "/x",
-		func(_ context.Context, _ dflhttp.Empty) (string, error) {
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			order = append(order, "handler")
 
-			return "ok", nil
+			return new("ok"), nil
 		})
 
 	do(h, http.MethodGet, "/x", nil, nil)
@@ -569,10 +569,10 @@ func middlewareShortCircuit(t *testing.T, f Factory) {
 	handlerCalled := false
 
 	dflhttp.Handle(r, http.MethodGet, "/x",
-		func(_ context.Context, _ dflhttp.Empty) (string, error) {
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			handlerCalled = true
 
-			return "ok", nil
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodGet, "/x", nil, nil)
@@ -602,8 +602,8 @@ func useAfterGroupDoesNotPropagate(t *testing.T, f Factory) {
 	})
 
 	dflhttp.Handle(api, http.MethodGet, "/x",
-		func(_ context.Context, _ dflhttp.Empty) (string, error) {
-			return "ok", nil
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return new("ok"), nil
 		})
 
 	rec := do(h, http.MethodGet, "/api/x", nil, nil)
@@ -631,8 +631,8 @@ func perRouteMiddleware(t *testing.T, f Factory) {
 	}
 
 	dflhttp.Handle(r, http.MethodGet, "/x",
-		func(_ context.Context, _ dflhttp.Empty) (string, error) {
-			return "ok", nil
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return new("ok"), nil
 		}, mw)
 
 	do(h, http.MethodGet, "/x", nil, nil)
@@ -658,8 +658,8 @@ func withCoercer(t *testing.T, f Factory) {
 	r, h := f.NewWithCoercer(teapot)
 
 	dflhttp.Handle(r, http.MethodGet, "/x",
-		func(_ context.Context, _ dflhttp.Empty) (string, error) {
-			return "", errors.New("anything")
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return nil, errors.New("anything")
 		})
 
 	rec := do(h, http.MethodGet, "/x", nil, nil)
@@ -688,7 +688,7 @@ func panicOnInvalidReq(t *testing.T, f Factory) {
 	}()
 
 	dflhttp.Handle(r, http.MethodGet, "/x/{tags}",
-		func(_ context.Context, _ badReq) (string, error) {
-			return "ok", nil
+		func(_ context.Context, _ *badReq) (*string, error) {
+			return new("ok"), nil
 		})
 }

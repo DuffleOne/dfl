@@ -4,64 +4,44 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"reflect"
 )
 
 // adapt produces a HandlerFunc from a typed handler. The handler shape is
-// enforced by the compiler via generics; reflection is used only at
-// registration time to walk the Req struct's tags.
+// enforced by the compiler via generics; reflection is confined to the
+// binder, which uses it solely to walk the Req struct's tags.
 //
-// Req can be a struct, a pointer to a struct, Empty, or *Empty. For pointer
-// Req with bindings, adapt allocates a fresh value on each request and the
-// binder writes into it. For Empty/*Empty, no allocation happens; pointer
-// reqs are passed as nil.
-func adapt[Req, Resp any](handler func(context.Context, Req) (Resp, error)) (HandlerFunc, error) {
-	reqType := reflect.TypeFor[Req]()
-	bindType := reqType
-	reqIsPtr := false
-
-	if reqType.Kind() == reflect.Pointer {
-		bindType = reqType.Elem()
-		reqIsPtr = true
-	}
-
-	b, err := buildBinder(bindType)
+// Both Req and Resp are pointers (*ReqT and *RespT, including *Empty for
+// routes with no input or no output). On every call, the handler receives
+// a freshly-allocated, bound *ReqT (or nil for *Empty), and returns either
+// a *RespT to JSON-encode or nil with an error.
+func adapt[ReqT, RespT any](handler func(context.Context, *ReqT) (*RespT, error)) (HandlerFunc, error) {
+	b, err := buildBinderFor[ReqT]()
 	if err != nil {
 		return nil, err
 	}
 
 	isEmptyResp := false
 
-	var respZero Resp
-	switch any(respZero).(type) {
-	case Empty, *Empty:
+	var respZero *RespT
+	if _, ok := any(respZero).(*Empty); ok {
 		isEmptyResp = true
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) error {
 		var (
-			req        Req
-			bindTarget any
+			req    ReqT
+			reqArg *ReqT
 		)
 
-		switch {
-		case reqIsPtr && b.noop:
-			// *Empty (or *Empty alias): hand the handler nil; nothing to bind.
-		case reqIsPtr:
-			ptr := reflect.New(bindType)
-			req = ptr.Interface().(Req)
-			bindTarget = req
-		default:
-			bindTarget = &req
-		}
-
-		if bindTarget != nil {
-			if err := b.bind(r, bindTarget); err != nil {
+		if !b.noop {
+			if err := b.bind(r, &req); err != nil {
 				return err
 			}
+
+			reqArg = &req
 		}
 
-		resp, err := handler(r.Context(), req)
+		resp, err := handler(r.Context(), reqArg)
 		if err != nil {
 			return err
 		}

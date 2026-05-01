@@ -40,6 +40,13 @@ func isEmptyType(t reflect.Type) bool {
 	return t == emptyType || t == emptyPtrType
 }
 
+// buildBinderFor is the generic entry point used by adapt. It keeps
+// reflect.TypeFor out of adapt.go so reflection stays inside the binder,
+// where it's already needed for tag walking.
+func buildBinderFor[T any]() (*binder, error) {
+	return buildBinder(reflect.TypeFor[T]())
+}
+
 // buildBinder reflects on t once at registration time and produces a binder
 // that knows where each field of t comes from (path, query, or body).
 func buildBinder(t reflect.Type) (*binder, error) {
