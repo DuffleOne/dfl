@@ -80,9 +80,9 @@ type PatternMux interface {
 
 // Router is dflhttp's unified router. It wraps a Mux, tracks group prefix
 // and middleware, and turns typed handler registrations into HandlerFuncs
-// registered on the underlying mux. Construct with NewRouter, register via
-// Handle (or the typed package-level Handle), then hand the Router to
-// http.Server.
+// registered on the underlying mux. Construct with NewRouter, register
+// typed handlers via Handle (or raw HandlerFuncs via HandleFunc), then
+// hand the Router to http.Server.
 type Router struct {
 	mux           Mux
 	register      func(method, pattern string, h http.HandlerFunc)
@@ -148,9 +148,11 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
 }
 
-// Handle registers h at method+path. To register a typed handler use the
-// package-level Handle, which adapts the handler down to a HandlerFunc.
-func (r *Router) Handle(method, path string, h HandlerFunc, mw ...Middleware) {
+// HandleFunc registers a raw HandlerFunc at method+path. Useful for routes
+// where the typed binding model doesn't fit (server-sent events, custom
+// content types, websockets, etc). For the common case use Handle, which
+// adapts a typed handler down to a HandlerFunc.
+func (r *Router) HandleFunc(method, path string, h HandlerFunc, mw ...Middleware) {
 	fullPath := r.prefix + path
 	chain := combineChain(r.middleware, mw)
 	wrapped := applyMiddleware(h, chain)
@@ -182,22 +184,23 @@ func (r *Router) Use(mw ...Middleware) {
 	r.middleware = append(r.middleware, mw...)
 }
 
-// Handle registers a typed handler at method+path on r. The handler shape
-// is checked at compile time; bind setup walks the Req struct's tags once
-// at registration and panics on a malformed Req.
+// Handle registers a typed handler at method+path. The handler shape is
+// checked at compile time; bind setup walks the Req struct's tags once at
+// registration (via the Router's RequestParser) and panics on a malformed
+// Req.
 //
 // Convention in this codebase is that handlers take and return pointers
 // (func(ctx, *Req) (*Resp, error)) so the error path is just (nil, err)
 // and *Empty cleanly covers routes with no input or output. The framework
 // also accepts value Req/Resp shapes, but the pointer form is what every
 // example uses.
-func Handle[Req, Resp any](r *Router, method, path string, handler func(context.Context, Req) (Resp, error), mw ...Middleware) {
+func (r *Router) Handle[Req, Resp any](method, path string, handler func(context.Context, Req) (Resp, error), mw ...Middleware) {
 	h, err := r.adapt(handler)
 	if err != nil {
 		panic("dflhttp: " + err.Error())
 	}
 
-	r.Handle(method, path, h, mw...)
+	r.HandleFunc(method, path, h, mw...)
 }
 
 func combineChain(group, perRoute []Middleware) []Middleware {

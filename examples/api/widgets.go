@@ -34,7 +34,7 @@ func NewWidgets() *Widgets {
 
 // Mount wires up widget endpoints on rg.
 func (w *Widgets) Mount(rg *dflhttp.Router) {
-	dflhttp.Handle(rg, http.MethodPost, "/widgets/{id}", w.handleCreate)
+	rg.Handle(http.MethodPost, "/widgets/{id}", w.handleCreate)
 }
 
 // CreateWidgetReq mixes all three input sources: a path param, a query

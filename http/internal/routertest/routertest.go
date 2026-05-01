@@ -89,7 +89,7 @@ func stringRespIsJSONEncoded(t *testing.T, f Factory) {
 
 	r, h := f.New()
 
-	dflhttp.Handle(r, http.MethodGet, "/health",
+	r.Handle(http.MethodGet, "/health",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			return new("up"), nil
 		})
@@ -116,7 +116,7 @@ func emptyRespReturns204(t *testing.T, f Factory) {
 
 	r, h := f.New()
 
-	dflhttp.Handle(r, http.MethodPost, "/ping",
+	r.Handle(http.MethodPost, "/ping",
 		func(_ context.Context, _ *dflhttp.Empty) (*dflhttp.Empty, error) {
 			return &dflhttp.Empty{}, nil
 		})
@@ -140,7 +140,7 @@ func emptyPointerRespReturns204(t *testing.T, f Factory) {
 
 	r, h := f.New()
 
-	dflhttp.Handle(r, http.MethodPost, "/ping",
+	r.Handle(http.MethodPost, "/ping",
 		func(_ context.Context, _ *dflhttp.Empty) (*dflhttp.Empty, error) {
 			return nil, nil //nolint:nilnil // tests the (*Empty, nil) shape used by examples/health.go
 		})
@@ -166,7 +166,7 @@ func pathBinding(t *testing.T, f Factory) {
 
 	var captured pathReq
 
-	dflhttp.Handle(r, http.MethodGet, "/items/{id}/n/{count}",
+	r.Handle(http.MethodGet, "/items/{id}/n/{count}",
 		func(_ context.Context, req *pathReq) (*string, error) {
 			captured = *req
 
@@ -195,7 +195,7 @@ func pathBindingInvalid(t *testing.T, f Factory) {
 
 	r, h := f.New()
 
-	dflhttp.Handle(r, http.MethodGet, "/n/{n}",
+	r.Handle(http.MethodGet, "/n/{n}",
 		func(_ context.Context, _ *intPathReq) (*string, error) {
 			return new("ok"), nil
 		})
@@ -230,7 +230,7 @@ func queryBinding(t *testing.T, f Factory) {
 
 	var captured queryReq
 
-	dflhttp.Handle(r, http.MethodGet, "/search",
+	r.Handle(http.MethodGet, "/search",
 		func(_ context.Context, req *queryReq) (*string, error) {
 			captured = *req
 
@@ -257,7 +257,7 @@ func queryBindingMissingLeavesZero(t *testing.T, f Factory) {
 
 	var captured queryReq
 
-	dflhttp.Handle(r, http.MethodGet, "/search",
+	r.Handle(http.MethodGet, "/search",
 		func(_ context.Context, req *queryReq) (*string, error) {
 			captured = *req
 
@@ -281,7 +281,7 @@ func queryBindingInvalid(t *testing.T, f Factory) {
 
 	r, h := f.New()
 
-	dflhttp.Handle(r, http.MethodGet, "/search",
+	r.Handle(http.MethodGet, "/search",
 		func(_ context.Context, _ *queryReq) (*string, error) {
 			return new("ok"), nil
 		})
@@ -314,7 +314,7 @@ func bodyBinding(t *testing.T, f Factory) {
 
 	var captured bodyReq
 
-	dflhttp.Handle(r, http.MethodPost, "/users",
+	r.Handle(http.MethodPost, "/users",
 		func(_ context.Context, req *bodyReq) (*string, error) {
 			captured = *req
 
@@ -339,7 +339,7 @@ func bodyBindingRejectsNonJSON(t *testing.T, f Factory) {
 
 	r, h := f.New()
 
-	dflhttp.Handle(r, http.MethodPost, "/users",
+	r.Handle(http.MethodPost, "/users",
 		func(_ context.Context, _ *bodyReq) (*string, error) {
 			return new("ok"), nil
 		})
@@ -358,7 +358,7 @@ func bodyBindingMalformedJSON(t *testing.T, f Factory) {
 
 	r, h := f.New()
 
-	dflhttp.Handle(r, http.MethodPost, "/users",
+	r.Handle(http.MethodPost, "/users",
 		func(_ context.Context, _ *bodyReq) (*string, error) {
 			return new("ok"), nil
 		})
@@ -384,7 +384,7 @@ func pathPlusBody(t *testing.T, f Factory) {
 
 	var captured updateReq
 
-	dflhttp.Handle(r, http.MethodPut, "/users/{id}",
+	r.Handle(http.MethodPut, "/users/{id}",
 		func(_ context.Context, req *updateReq) (*string, error) {
 			captured = *req
 
@@ -413,7 +413,7 @@ func bodyDoesntBleedToNonJSONFields(t *testing.T, f Factory) {
 
 	var captured updateReq
 
-	dflhttp.Handle(r, http.MethodPut, "/users/{id}",
+	r.Handle(http.MethodPut, "/users/{id}",
 		func(_ context.Context, req *updateReq) (*string, error) {
 			captured = *req
 
@@ -439,7 +439,7 @@ func reqErrorPropagates(t *testing.T, f Factory) {
 
 	r, h := f.New()
 
-	dflhttp.Handle(r, http.MethodGet, "/missing",
+	r.Handle(http.MethodGet, "/missing",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			return nil, dflhttp.New(http.StatusNotFound, "not_found", dflhttp.M{"id": "x"})
 		})
@@ -471,7 +471,7 @@ func genericErrorBecomes500(t *testing.T, f Factory) {
 
 	r, h := f.New()
 
-	dflhttp.Handle(r, http.MethodGet, "/boom",
+	r.Handle(http.MethodGet, "/boom",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			return nil, errors.New("kaboom")
 		})
@@ -500,7 +500,7 @@ func groupPrefixesPaths(t *testing.T, f Factory) {
 	r, h := f.New()
 	api := r.Group("/api")
 
-	dflhttp.Handle(api, http.MethodGet, "/health",
+	api.Handle(http.MethodGet, "/health",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			return new("up"), nil
 		})
@@ -538,7 +538,7 @@ func middlewareWraps(t *testing.T, f Factory) {
 	r.Use(track("outer"))
 	r.Use(track("inner"))
 
-	dflhttp.Handle(r, http.MethodGet, "/x",
+	r.Handle(http.MethodGet, "/x",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			order = append(order, "handler")
 
@@ -568,7 +568,7 @@ func middlewareShortCircuit(t *testing.T, f Factory) {
 
 	handlerCalled := false
 
-	dflhttp.Handle(r, http.MethodGet, "/x",
+	r.Handle(http.MethodGet, "/x",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			handlerCalled = true
 
@@ -601,7 +601,7 @@ func useAfterGroupDoesNotPropagate(t *testing.T, f Factory) {
 		}
 	})
 
-	dflhttp.Handle(api, http.MethodGet, "/x",
+	api.Handle(http.MethodGet, "/x",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			return new("ok"), nil
 		})
@@ -630,7 +630,7 @@ func perRouteMiddleware(t *testing.T, f Factory) {
 		}
 	}
 
-	dflhttp.Handle(r, http.MethodGet, "/x",
+	r.Handle(http.MethodGet, "/x",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			return new("ok"), nil
 		}, mw)
@@ -657,7 +657,7 @@ func withCoercer(t *testing.T, f Factory) {
 
 	r, h := f.NewWithCoercer(teapot)
 
-	dflhttp.Handle(r, http.MethodGet, "/x",
+	r.Handle(http.MethodGet, "/x",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
 			return nil, errors.New("anything")
 		})
@@ -687,7 +687,7 @@ func panicOnInvalidReq(t *testing.T, f Factory) {
 		}
 	}()
 
-	dflhttp.Handle(r, http.MethodGet, "/x/{tags}",
+	r.Handle(http.MethodGet, "/x/{tags}",
 		func(_ context.Context, _ *badReq) (*string, error) {
 			return new("ok"), nil
 		})

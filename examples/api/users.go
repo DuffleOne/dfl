@@ -30,10 +30,10 @@ func NewUsers() *Users {
 
 // Mount wires up user endpoints on rg.
 func (u *Users) Mount(rg *dflhttp.Router) {
-	dflhttp.Handle(rg, http.MethodGet, "/users", u.handleList)
-	dflhttp.Handle(rg, http.MethodGet, "/users/{id}", u.handleGet)
-	dflhttp.Handle(rg, http.MethodPost, "/users", u.handleCreate)
-	dflhttp.Handle(rg, http.MethodPut, "/users/{id}", u.handleUpdate)
+	rg.Handle(http.MethodGet, "/users", u.handleList)
+	rg.Handle(http.MethodGet, "/users/{id}", u.handleGet)
+	rg.Handle(http.MethodPost, "/users", u.handleCreate)
+	rg.Handle(http.MethodPut, "/users/{id}", u.handleUpdate)
 }
 
 // ListUsersReq pulls all its fields from the query string.

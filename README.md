@@ -32,7 +32,7 @@ func handleGet(_ context.Context, req *GetUserReq) (*User, error) {
 
 func main() {
     r := dflhttp.NewRouter(http.NewServeMux())
-    dflhttp.Handle(r, http.MethodGet, "/users/{id}", handleGet)
+    r.Handle(http.MethodGet, "/users/{id}", handleGet)
     log.Fatal(http.ListenAndServe(":8080", r))
 }
 ```

@@ -23,10 +23,10 @@ type Health struct {
 
 // Mount wires up health endpoints on rg.
 func (h Health) Mount(rg *dflhttp.Router) {
-	dflhttp.Handle(rg, http.MethodGet, "/health", h.handleHealth)
-	dflhttp.Handle(rg, http.MethodGet, "/sha", h.handleSHA)
-	dflhttp.Handle(rg, http.MethodGet, "/version", h.handleVersion)
-	dflhttp.Handle(rg, http.MethodPost, "/ping", h.handlePing)
+	rg.Handle(http.MethodGet, "/health", h.handleHealth)
+	rg.Handle(http.MethodGet, "/sha", h.handleSHA)
+	rg.Handle(http.MethodGet, "/version", h.handleVersion)
+	rg.Handle(http.MethodPost, "/ping", h.handlePing)
 }
 
 // StatusResp is the common shape for the simple health endpoints. A pointer
