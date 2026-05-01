@@ -49,13 +49,18 @@ func buildBinderFor[T any]() (*binder, error) {
 
 // buildBinder reflects on t once at registration time and produces a binder
 // that knows where each field of t comes from (path, query, or body).
+// t may be a struct, a pointer to a struct, Empty, or *Empty.
 func buildBinder(t reflect.Type) (*binder, error) {
 	if isEmptyType(t) {
 		return &binder{noop: true}, nil
 	}
 
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
 	if t.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("req must be a struct or http.Empty, got %s", t.Kind())
+		return nil, fmt.Errorf("req must be a struct, *struct, or http.Empty, got %s", t.Kind())
 	}
 
 	b := &binder{}
@@ -97,13 +102,24 @@ func buildBinder(t reflect.Type) (*binder, error) {
 	return b, nil
 }
 
-// bind populates dst (a pointer to a Req value) from r.
+// bind populates dst (a pointer to a Req value) from r. dst is always *Req,
+// where Req can itself be a pointer to a struct: when adapt declares
+// `var req Req` and Req is *Foo, dst here is **Foo, so we walk one
+// indirection and allocate the inner *Foo.
 func (b *binder) bind(r *http.Request, dst any) error {
 	if b.noop {
 		return nil
 	}
 
 	v := reflect.ValueOf(dst).Elem()
+
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+
+		v = v.Elem()
+	}
 
 	for _, p := range b.paths {
 		val := r.PathValue(p.key)
@@ -147,7 +163,7 @@ func (b *binder) bindBody(r *http.Request, dst reflect.Value) error {
 		mt, _, _ := strings.Cut(ct, ";")
 		if strings.TrimSpace(mt) != "application/json" {
 			return New(http.StatusUnsupportedMediaType, "unsupported_media_type", M{
-				"contentType": ct,
+				"content_type": ct,
 			})
 		}
 	}

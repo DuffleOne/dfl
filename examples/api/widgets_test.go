@@ -54,7 +54,7 @@ func TestCreateWidgetValidationFailure(t *testing.T) {
 
 	var got struct {
 		Code       string         `json:"code"`
-		StatusCode int            `json:"statusCode"`
+		StatusCode int            `json:"status_code"`
 		Meta       map[string]any `json:"meta"`
 	}
 

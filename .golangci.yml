@@ -52,12 +52,8 @@ linters:
     tagliatelle:
       case:
         rules:
-          json: camel
+          json: snake
           db: snake
-        overrides:
-          - pkg: client
-            rules:
-              json: snake
 
 formatters:
   enable:

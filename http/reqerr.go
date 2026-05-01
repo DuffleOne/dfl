@@ -12,7 +12,7 @@ import (
 // and errors.As.
 type ReqError struct {
 	Code       string  `json:"code"`
-	StatusCode int     `json:"statusCode"`
+	StatusCode int     `json:"status_code"`
 	Meta       M       `json:"meta,omitempty"`
 	Reasons    []error `json:"-"`
 }

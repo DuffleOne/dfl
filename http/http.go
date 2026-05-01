@@ -174,13 +174,15 @@ func (r *Router) Use(mw ...Middleware) {
 }
 
 // Handle registers a typed handler at method+path on r. The handler shape
-// is checked at compile time. Both Req and Resp are pointer types
-// (*ReqT and *RespT, including *Empty for routes with no input or no
-// output), so the framework can allocate, bind, and pass pointers per
-// request without runtime type gymnastics, and the handler's error path
-// is just (nil, err). Bind setup walks the Req struct's tags once at
-// registration and panics on a malformed Req.
-func Handle[ReqT, RespT any](r *Router, method, path string, handler func(context.Context, *ReqT) (*RespT, error), mw ...Middleware) {
+// is checked at compile time; bind setup walks the Req struct's tags once
+// at registration and panics on a malformed Req.
+//
+// Convention in this codebase is that handlers take and return pointers
+// (func(ctx, *Req) (*Resp, error)) so the error path is just (nil, err)
+// and *Empty cleanly covers routes with no input or output. The framework
+// also accepts value Req/Resp shapes, but the pointer form is what every
+// example uses.
+func Handle[Req, Resp any](r *Router, method, path string, handler func(context.Context, Req) (Resp, error), mw ...Middleware) {
 	h, err := adapt(handler)
 	if err != nil {
 		panic("dflhttp: " + err.Error())

@@ -6,42 +6,36 @@ import (
 	"net/http"
 )
 
-// adapt produces a HandlerFunc from a typed handler. The handler shape is
-// enforced by the compiler via generics; reflection is confined to the
-// binder, which uses it solely to walk the Req struct's tags.
+// adapt produces a HandlerFunc from a typed handler. Reflection is confined
+// to the binder, which uses it solely to walk the Req struct's tags and
+// (when Req is a pointer) to allocate the value on first bind. Adapt
+// itself uses no reflection at all.
 //
-// Both Req and Resp are pointers (*ReqT and *RespT, including *Empty for
-// routes with no input or no output). On every call, the handler receives
-// a freshly-allocated, bound *ReqT (or nil for *Empty), and returns either
-// a *RespT to JSON-encode or nil with an error.
-func adapt[ReqT, RespT any](handler func(context.Context, *ReqT) (*RespT, error)) (HandlerFunc, error) {
-	b, err := buildBinderFor[ReqT]()
+// Req and Resp can be any shape: struct, *struct, Empty, *Empty. The pointer
+// convention is what handlers in this codebase use, but the framework
+// doesn't insist on it.
+func adapt[Req, Resp any](handler func(context.Context, Req) (Resp, error)) (HandlerFunc, error) {
+	b, err := buildBinderFor[Req]()
 	if err != nil {
 		return nil, err
 	}
 
 	isEmptyResp := false
 
-	var respZero *RespT
-	if _, ok := any(respZero).(*Empty); ok {
+	var respZero Resp
+	switch any(respZero).(type) {
+	case Empty, *Empty:
 		isEmptyResp = true
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) error {
-		var (
-			req    ReqT
-			reqArg *ReqT
-		)
+		var req Req
 
-		if !b.noop {
-			if err := b.bind(r, &req); err != nil {
-				return err
-			}
-
-			reqArg = &req
+		if err := b.bind(r, &req); err != nil {
+			return err
 		}
 
-		resp, err := handler(r.Context(), reqArg)
+		resp, err := handler(r.Context(), req)
 		if err != nil {
 			return err
 		}
