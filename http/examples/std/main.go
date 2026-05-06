@@ -14,14 +14,14 @@
 //
 // Run:
 //
-//	go run ./examples/std
+//	go run ./http/examples/std
 package main
 
 import (
 	"log"
 	"net/http"
 
-	"github.com/duffleone/dfl/examples/api"
+	"github.com/duffleone/dfl/http/examples/api"
 	dflhttp "github.com/duffleone/dfl/http"
 )
 

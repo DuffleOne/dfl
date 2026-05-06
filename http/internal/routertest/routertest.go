@@ -142,7 +142,7 @@ func emptyPointerRespReturns204(t *testing.T, f Factory) {
 
 	r.Handle(http.MethodPost, "/ping",
 		func(_ context.Context, _ *dflhttp.Empty) (*dflhttp.Empty, error) {
-			return nil, nil //nolint:nilnil // tests the (*Empty, nil) shape used by examples/health.go
+			return nil, nil //nolint:nilnil // tests the (*Empty, nil) shape used by http/examples/api/health.go
 		})
 
 	rec := do(h, http.MethodPost, "/ping", nil, nil)

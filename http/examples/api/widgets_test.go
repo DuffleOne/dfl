@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/duffleone/dfl/examples/api"
+	"github.com/duffleone/dfl/http/examples/api"
 	dflhttp "github.com/duffleone/dfl/http"
 )
 
