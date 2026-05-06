@@ -1,6 +1,6 @@
 // Package pgxdb wraps a jackc/pgx/v5 connection pool with a small set of
 // helpers: transaction shapes (read, read-committed, serializable-with-retry),
-// generic Get/Select scanners, and an escape hatch to *database/sql.
+// generic Get/Scalar/Select scanners, and an escape hatch to *database/sql.
 //
 // The Querier interface is satisfied by both *DB and pgx.Tx, so the same
 // helper functions work inside or outside a transaction.
@@ -18,6 +18,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 )
+
+// NotFound is the sentinel returned by Get and Scalar when a query yields
+// zero rows. Aliased to pgx.ErrNoRows so errors.Is matches either name.
+var NotFound = pgx.ErrNoRows //nolint:errname // package-local alias, deliberately not "ErrNotFound"
 
 const maxSerializableTxRetries = 3
 
@@ -173,7 +177,15 @@ func (db *DB) tx(ctx context.Context, opts pgx.TxOptions, f func(tx pgx.Tx) erro
 	return tx.Commit(ctx)
 }
 
-// Get queries a single row and scans it into T using struct `db` tags.
+// Get fetches exactly one row and scans it into a struct T whose fields are
+// matched to columns by the `db` struct tag (or by lowercased field name when
+// no tag is present). T must be a struct. Returns NotFound if the query
+// yields zero rows, and an error if it yields more than one. For a single
+// non-struct value (`SELECT count(*)`, `SELECT id`, ...) reach for Scalar
+// instead; for many rows, Select.
+//
+//	user, err := pgxdb.Get[User](ctx, db,
+//	    `SELECT id, name, email FROM users WHERE id = $1`, id)
 func Get[T any](ctx context.Context, q Querier, query string, args ...any) (T, error) {
 	rows, err := q.Query(ctx, query, args...)
 	if err != nil {
@@ -185,7 +197,35 @@ func Get[T any](ctx context.Context, q Querier, query string, args ...any) (T, e
 	return pgx.CollectOneRow(rows, pgx.RowToStructByName[T])
 }
 
-// Select queries multiple rows and scans them into []T using struct `db` tags.
+// Scalar fetches exactly one row of one column and returns the scanned value.
+// T can be anything pgx knows how to scan into: ints, strings, bools, time.Time,
+// []byte, uuid.UUID, pgtype values, anything implementing sql.Scanner, and so
+// on. Returns NotFound if the query yields zero rows, and an error if it
+// yields more than one row, or more than one column. Use Get when the row is
+// a struct.
+//
+//	n, err := pgxdb.Scalar[int](ctx, db, `SELECT count(*) FROM users`)
+//	id, err := pgxdb.Scalar[int64](ctx, db,
+//	    `INSERT INTO users (name) VALUES ($1) RETURNING id`, name)
+func Scalar[T any](ctx context.Context, q Querier, query string, args ...any) (T, error) {
+	rows, err := q.Query(ctx, query, args...)
+	if err != nil {
+		var zero T
+
+		return zero, err
+	}
+
+	return pgx.CollectOneRow(rows, pgx.RowTo[T])
+}
+
+// Select fetches zero or more rows and scans each into a struct T using the
+// same `db`-tag rules as Get. T must be a struct. Returns an empty slice (not
+// nil, not an error) when the query yields no rows. For a single struct row
+// reach for Get; for a column of scalars, run a per-row loop over q.Query
+// directly, since Select's row mapper is struct-only.
+//
+//	all, err := pgxdb.Select[User](ctx, db,
+//	    `SELECT id, name, email FROM users ORDER BY id`)
 func Select[T any](ctx context.Context, q Querier, query string, args ...any) ([]T, error) {
 	rows, err := q.Query(ctx, query, args...)
 	if err != nil {
