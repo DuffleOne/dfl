@@ -22,7 +22,10 @@ import (
 	"github.com/duffleone/dfl/events"
 )
 
-const eventAttr = "event"
+const (
+	eventAttr   = "event"
+	headersAttr = "headers"
+)
 
 // PublishAPI is the slice of *sns.Client the publisher calls.
 type PublishAPI interface {
@@ -49,12 +52,18 @@ func (p *Publisher) Publish(ctx context.Context, env events.Envelope) error {
 		return events.New("no_topic", events.M{"event": env.Name})
 	}
 
+	attrs := map[string]types.MessageAttributeValue{
+		eventAttr: {DataType: aws.String("String"), StringValue: aws.String(env.Name)},
+	}
+
+	if h := marshalHeaders(env.Headers); h != "" {
+		attrs[headersAttr] = types.MessageAttributeValue{DataType: aws.String("String"), StringValue: aws.String(h)}
+	}
+
 	_, err := p.client.Publish(ctx, &sns.PublishInput{
-		TopicArn: aws.String(arn),
-		Message:  aws.String(string(env.Payload)),
-		MessageAttributes: map[string]types.MessageAttributeValue{
-			eventAttr: {DataType: aws.String("String"), StringValue: aws.String(env.Name)},
-		},
+		TopicArn:          aws.String(arn),
+		Message:           aws.String(string(env.Payload)),
+		MessageAttributes: attrs,
 	})
 	if err != nil {
 		return events.Wrap(err, "publish_failed", events.M{"event": env.Name})
@@ -108,14 +117,17 @@ func NewPushSink(client PublishAPI, topics map[string]string, opts ...PushOption
 	return s
 }
 
-// snsMessage is the JSON SNS POSTs to an HTTP subscription.
+// snsMessage is the JSON SNS POSTs to an HTTP subscription. The fields carry no
+// json tags on purpose: SNS uses PascalCase keys (Type, Message, SubscribeURL,
+// ...) that encoding/json matches to these field names case-insensitively, so
+// the snake_case tag convention stays free of transport-specific exceptions.
 type snsMessage struct {
-	Type              string `json:"Type"`
-	Message           string `json:"Message"`
-	SubscribeURL      string `json:"SubscribeURL"`
+	Type              string
+	Message           string
+	SubscribeURL      string
 	MessageAttributes map[string]struct {
-		Value string `json:"Value"`
-	} `json:"MessageAttributes"`
+		Value string
+	}
 }
 
 // ServeHTTP handles an SNS HTTP delivery: it confirms a subscription handshake
@@ -145,8 +157,11 @@ func (s *PushSink) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 
 	case "Notification":
-		name := msg.MessageAttributes[eventAttr].Value
-		env := events.Envelope{Name: name, Payload: []byte(msg.Message)}
+		env := events.Envelope{
+			Name:    msg.MessageAttributes[eventAttr].Value,
+			Payload: []byte(msg.Message),
+			Headers: unmarshalHeaders(msg.MessageAttributes[headersAttr].Value),
+		}
 
 		if err := s.Dispatch(r.Context(), env); err != nil {
 			http.Error(w, "handler failed", http.StatusInternalServerError)
@@ -169,4 +184,33 @@ func isAWSHost(raw string) bool {
 	}
 
 	return strings.HasSuffix(u.Hostname(), ".amazonaws.com")
+}
+
+// marshalHeaders encodes envelope headers to a JSON string for transport, or ""
+// when there are none.
+func marshalHeaders(h map[string]string) string {
+	if len(h) == 0 {
+		return ""
+	}
+
+	b, err := json.Marshal(h)
+	if err != nil {
+		return ""
+	}
+
+	return string(b)
+}
+
+// unmarshalHeaders decodes the JSON string produced by marshalHeaders.
+func unmarshalHeaders(s string) map[string]string {
+	if s == "" {
+		return nil
+	}
+
+	var h map[string]string
+	if err := json.Unmarshal([]byte(s), &h); err != nil {
+		return nil
+	}
+
+	return h
 }

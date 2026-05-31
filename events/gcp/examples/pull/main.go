@@ -34,7 +34,7 @@ func main() {
 	}
 	defer func() { _ = client.Close() }()
 
-	sink := gcppubsub.NewPullSink(ctx, client, "welcome-service")
+	sink := gcppubsub.NewPullSink(client, "welcome-service")
 	bus := events.NewBus(sink)
 
 	bus.On(func(_ context.Context, e UserCreated) error {
@@ -48,5 +48,5 @@ func main() {
 	}
 
 	log.Println("receiving from Pub/Sub...")
-	select {} // Subscribe started the receiver; block so it keeps running
+	log.Fatal(sink.Receive(ctx)) // blocks until ctx is cancelled
 }

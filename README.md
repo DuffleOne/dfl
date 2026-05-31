@@ -71,6 +71,8 @@ func main() {
 
 Ready-made cloud transports live in their own modules so the core stays dependency-free: [`events/aws`](./events/aws) (SQS, SNS, EventBridge) and [`events/gcp`](./events/gcp) (Pub/Sub), each with both pull (a receiver loop) and push (an `http.Handler` for the transport's HTTP delivery) where the transport supports it. Plain in-process examples are in [`events/examples`](./events/examples).
 
+A `Plugin` wraps both sides of an event's life, the publish and the deliver, so cross-cutting concerns inject cleanly. The event carries a `Headers` bag that a plugin writes on publish and reads on deliver, and the cloud adapters map it to native message attributes. [`events/otel`](./events/otel) uses this for OpenTelemetry trace propagation: `events.NewBus(sink, events.WithPlugins(otel.New()))` injects trace context on emit and continues the trace in a consumer span on delivery.
+
 ### [`db/pgxdb`](./db/pgxdb)
 
 Wrapper around `jackc/pgx/v5`. Transaction shapes (read-only, read-committed, serializable with retry), generic `Get`/`Scalar`/`Select` scanners, and an escape hatch to `*database/sql`. The `Querier` interface is satisfied by both the pool and `pgx.Tx`, so the same helper functions work inside or outside a transaction.

@@ -36,10 +36,10 @@ mux.Handle("POST /events/pubsub", sink) // point a push subscription here
 Pull is the same shape, with a receiver loop instead of an endpoint:
 
 ```go
-sink := pubsub.NewPullSink(ctx, client, "welcome-service")
+sink := pubsub.NewPullSink(client, "welcome-service")
 bus := events.NewBus(sink)
 bus.On(welcome)
-// Subscribe started the receiver; keep the process alive.
+sink.Receive(ctx) // blocking worker loop, started after handlers are registered
 ```
 
 Runnable examples in [`examples/pull`](./examples/pull) and

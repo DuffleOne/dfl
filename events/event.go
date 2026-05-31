@@ -31,10 +31,19 @@ type URLSafeNamer interface {
 	URLSafeName() string
 }
 
-// Envelope is the wire form of an event: a name and an encoded payload. It's
-// the events analog of *http.Request, the thing a Sink moves around. The bus
-// produces it in Emit (via the Codec) and consumes it in the deliver closure.
+// Envelope is the wire form of an event: a name, an encoded payload, and a bag
+// of string headers. It's the events analog of *http.Request, the thing a Sink
+// moves around. The bus produces it in Emit (via the Codec) and consumes it in
+// the deliver closure.
+//
+// Headers is the carrier for cross-cutting metadata that travels with the
+// event, notably trace context: a publish-side Plugin injects into it (e.g.
+// W3C traceparent) and a deliver-side Plugin extracts from it. Sinks are
+// responsible for carrying Headers over their transport; MemSink passes the
+// whole envelope through, and the cloud adapters map them to native message
+// attributes.
 type Envelope struct {
-	Name    string          `json:"name"`
-	Payload json.RawMessage `json:"payload"`
+	Name    string            `json:"name"`
+	Payload json.RawMessage   `json:"payload"`
+	Headers map[string]string `json:"headers,omitempty"`
 }

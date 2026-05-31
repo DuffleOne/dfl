@@ -46,8 +46,20 @@ type HandlerFunc func(ctx context.Context, env Envelope) error
 
 // Middleware wraps a HandlerFunc. It can run code before or after, short-circuit
 // by returning an error without calling next, or transform next's error. It's
-// the same shape and composition as the http package's Middleware.
+// the same shape and composition as the http package's Middleware. Middleware
+// runs on the consume side; for the produce side see PublishMiddleware.
 type Middleware func(next HandlerFunc) HandlerFunc
+
+// PublishFunc publishes an envelope. It's the produce-side analog of
+// HandlerFunc: the base PublishFunc hands the envelope to the sink, and
+// PublishMiddleware wraps it. The envelope is a pointer so middleware can mutate
+// it, for instance to inject trace headers before it's sent.
+type PublishFunc func(ctx context.Context, env *Envelope) error
+
+// PublishMiddleware wraps a PublishFunc on the produce side. A Plugin uses it to
+// inject context (trace headers, metadata) into the outgoing envelope and to
+// observe or time the publish.
+type PublishMiddleware func(next PublishFunc) PublishFunc
 
 // Coercer turns any error into an *EventError suitable for the ErrorHandler and
 // for RegisterEndpoint's HTTP projection. nil in, nil out. Pluggable so callers
@@ -60,6 +72,49 @@ type Coercer func(error) *EventError
 // override with WithErrorHandler.
 type ErrorHandler func(ctx context.Context, env Envelope, err *EventError)
 
+// Plugin is a cross-cutting extension installed on a Bus with WithPlugins. It
+// wraps both sides of an event's life: WrapPublish on the produce side (to
+// inject trace context or metadata into the outgoing envelope, start a producer
+// span, and so on) and WrapDeliver on the consume side (to extract that context
+// and continue the trace around the handler). Either method may return next
+// unchanged to opt out of that side.
+//
+// This is how something like OpenTelemetry plugs in: one WithPlugins call wires
+// up both injection on publish and extraction on deliver. The concrete OTel
+// plugin lives in its own module, github.com/duffleone/dfl/events/otel, so the
+// core stays dependency-free.
+type Plugin interface {
+	WrapPublish(next PublishFunc) PublishFunc
+	WrapDeliver(next HandlerFunc) HandlerFunc
+}
+
+// PluginFuncs adapts plain middleware into a Plugin. A nil field leaves that
+// side unchanged, so a publish-only or deliver-only plugin is a one-liner:
+//
+//	events.PluginFuncs{Deliver: logEvents}
+type PluginFuncs struct {
+	Publish PublishMiddleware
+	Deliver Middleware
+}
+
+// WrapPublish satisfies Plugin.
+func (p PluginFuncs) WrapPublish(next PublishFunc) PublishFunc {
+	if p.Publish == nil {
+		return next
+	}
+
+	return p.Publish(next)
+}
+
+// WrapDeliver satisfies Plugin.
+func (p PluginFuncs) WrapDeliver(next HandlerFunc) HandlerFunc {
+	if p.Deliver == nil {
+		return next
+	}
+
+	return p.Deliver(next)
+}
+
 // Bus is the event bus. It wraps a Sink, holds the codec, validator, coercer,
 // and error handler, and turns typed On registrations into Envelope-level
 // deliver callbacks on the sink. Construct with NewBus, register handlers with
@@ -71,6 +126,7 @@ type Bus struct {
 	coercer    Coercer
 	onError    ErrorHandler
 	middleware []Middleware
+	publishMW  []PublishMiddleware
 }
 
 // Option configures a Bus.
@@ -97,6 +153,19 @@ func WithCoercer(c Coercer) Option {
 func WithErrorHandler(h ErrorHandler) Option {
 	return func(b *Bus) {
 		b.onError = h
+	}
+}
+
+// WithPlugins installs plugins: each plugin's WrapDeliver joins the consume
+// middleware chain (applied to every On registered afterwards) and its
+// WrapPublish the publish chain. Install at construction, before registering
+// handlers.
+func WithPlugins(plugins ...Plugin) Option {
+	return func(b *Bus) {
+		for _, p := range plugins {
+			b.middleware = append(b.middleware, p.WrapDeliver)
+			b.publishMW = append(b.publishMW, p.WrapPublish)
+		}
 	}
 }
 
@@ -200,7 +269,13 @@ func (b *Bus) Emit(ctx context.Context, e Event) error {
 		return b.coerce(err, name)
 	}
 
-	if err := b.sink.Publish(ctx, Envelope{Name: name, Payload: payload}); err != nil {
+	env := Envelope{Name: name, Payload: payload, Headers: map[string]string{}}
+
+	base := PublishFunc(func(ctx context.Context, env *Envelope) error {
+		return b.sink.Publish(ctx, *env)
+	})
+
+	if err := applyPublish(base, b.publishMW)(ctx, &env); err != nil {
 		return b.coerce(err, name)
 	}
 
@@ -274,4 +349,12 @@ func applyMiddleware(h HandlerFunc, mw []Middleware) HandlerFunc {
 	}
 
 	return h
+}
+
+func applyPublish(p PublishFunc, mw []PublishMiddleware) PublishFunc {
+	for i := len(mw) - 1; i >= 0; i-- {
+		p = mw[i](p)
+	}
+
+	return p
 }

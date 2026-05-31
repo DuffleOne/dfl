@@ -11,6 +11,7 @@ package sqs
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,8 +21,13 @@ import (
 	"github.com/duffleone/dfl/events"
 )
 
-// eventAttr is the SQS message attribute carrying the event name.
-const eventAttr = "event"
+const (
+	// eventAttr is the SQS message attribute carrying the event name.
+	eventAttr = "event"
+	// headersAttr carries the envelope headers as a JSON object, so trace
+	// context set by a plugin survives the round trip.
+	headersAttr = "headers"
+)
 
 // API is the slice of *sqs.Client this sink calls. Declaring it as an interface
 // keeps the sink testable with a fake.
@@ -78,12 +84,18 @@ func NewSink(client API, queueURL string, opts ...Option) *Sink {
 // it. SendMessage returns once SQS has durably accepted the message, which is
 // the guarantee Emit relies on.
 func (s *Sink) Publish(ctx context.Context, env events.Envelope) error {
+	attrs := map[string]types.MessageAttributeValue{
+		eventAttr: {DataType: aws.String("String"), StringValue: aws.String(env.Name)},
+	}
+
+	if h := marshalHeaders(env.Headers); h != "" {
+		attrs[headersAttr] = types.MessageAttributeValue{DataType: aws.String("String"), StringValue: aws.String(h)}
+	}
+
 	_, err := s.client.SendMessage(ctx, &sqs.SendMessageInput{
-		QueueUrl:    aws.String(s.queueURL),
-		MessageBody: aws.String(string(env.Payload)),
-		MessageAttributes: map[string]types.MessageAttributeValue{
-			eventAttr: {DataType: aws.String("String"), StringValue: aws.String(env.Name)},
-		},
+		QueueUrl:          aws.String(s.queueURL),
+		MessageBody:       aws.String(string(env.Payload)),
+		MessageAttributes: attrs,
 	})
 	if err != nil {
 		return events.Wrap(err, "publish_failed", events.M{"event": env.Name})
@@ -106,7 +118,7 @@ func (s *Sink) Receive(ctx context.Context) error {
 			QueueUrl:              aws.String(s.queueURL),
 			MaxNumberOfMessages:   s.batch,
 			WaitTimeSeconds:       s.waitSecs,
-			MessageAttributeNames: []string{eventAttr},
+			MessageAttributeNames: []string{eventAttr, headersAttr},
 		})
 		if err != nil {
 			if ctx.Err() != nil {
@@ -135,7 +147,12 @@ func (s *Sink) handle(ctx context.Context, m types.Message) {
 		body = *m.Body
 	}
 
-	env := events.Envelope{Name: name, Payload: []byte(body)}
+	var headers map[string]string
+	if a, ok := m.MessageAttributes[headersAttr]; ok && a.StringValue != nil {
+		headers = unmarshalHeaders(*a.StringValue)
+	}
+
+	env := events.Envelope{Name: name, Payload: []byte(body), Headers: headers}
 
 	if err := s.Dispatch(ctx, env); err != nil {
 		// Leave the message; SQS redelivers after the visibility timeout.
@@ -151,4 +168,33 @@ func (s *Sink) handle(ctx context.Context, m types.Message) {
 	}); err != nil {
 		slog.ErrorContext(ctx, "sqs: delete failed", slog.String("error", err.Error()))
 	}
+}
+
+// marshalHeaders encodes envelope headers to a JSON string for transport, or ""
+// when there are none.
+func marshalHeaders(h map[string]string) string {
+	if len(h) == 0 {
+		return ""
+	}
+
+	b, err := json.Marshal(h)
+	if err != nil {
+		return ""
+	}
+
+	return string(b)
+}
+
+// unmarshalHeaders decodes the JSON string produced by marshalHeaders.
+func unmarshalHeaders(s string) map[string]string {
+	if s == "" {
+		return nil
+	}
+
+	var h map[string]string
+	if err := json.Unmarshal([]byte(s), &h); err != nil {
+		return nil
+	}
+
+	return h
 }

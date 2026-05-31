@@ -6,6 +6,12 @@
 // EventBridge does not let you pull directly. Delivery is via rules that route
 // to targets: an SQS queue (pull it with the sqs package) or an HTTP API
 // destination (push it here).
+//
+// Envelope.Headers are not carried: an EventBridge entry has no per-message
+// attribute bag like SQS, SNS, or Pub/Sub, so there's nowhere to put trace
+// context without wrapping the detail payload. If you need trace propagation
+// over EventBridge, route to an SQS target and use the sqs package, which does
+// carry headers.
 package eventbridge
 
 import (
@@ -89,9 +95,11 @@ func NewPushSink(client PutAPI, busName, source string) *PushSink {
 	}
 }
 
-// ebEvent is the EventBridge event envelope delivered to an HTTP target.
+// ebEvent is the EventBridge event envelope delivered to an HTTP target. The
+// detail-type key is kebab-case in EventBridge's own schema, so it can't follow
+// the snake_case tag convention.
 type ebEvent struct {
-	DetailType string          `json:"detail-type"`
+	DetailType string          `json:"detail-type"` //nolint:tagliatelle // EventBridge wire field
 	Detail     json.RawMessage `json:"detail"`
 }
 
