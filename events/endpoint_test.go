@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/duffleone/dfl/events"
@@ -16,9 +17,15 @@ func TestRegisterEndpointSuccess(t *testing.T) {
 	bus := events.NewBus(events.NewMemSink())
 	r := dflhttp.NewRouter(http.NewServeMux())
 
-	got := make(chan evtUser, 1)
+	// The endpoint runs the handler synchronously within the request, but the
+	// handler runs on the server goroutine; the WaitGroup fences the read of got.
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	var got evtUser
 	bus.RegisterEndpoint(r, func(_ context.Context, e evtUser) error {
-		got <- e
+		got = e
+		wg.Done()
 
 		return nil
 	})
@@ -33,13 +40,10 @@ func TestRegisterEndpointSuccess(t *testing.T) {
 		t.Fatalf("status = %d, want 204", resp.StatusCode)
 	}
 
-	select {
-	case e := <-got:
-		if e.Email != "a@b.com" {
-			t.Errorf("decoded email = %q, want a@b.com", e.Email)
-		}
-	default:
-		t.Fatal("handler did not run")
+	wg.Wait()
+
+	if got.Email != "a@b.com" {
+		t.Errorf("decoded email = %q, want a@b.com", got.Email)
 	}
 }
 

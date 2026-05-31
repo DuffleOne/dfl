@@ -7,13 +7,20 @@
 // Behaviour that's specific to one backend (synchronous vs async delivery,
 // ordering, durability) is deliberately not asserted here; it lives in that
 // backend's own tests. The MemSink suite caller is events/mem_test.go.
+//
+// Async deliveries are awaited with a sync.WaitGroup rather than channels: a
+// handler (or the error handler) calls Done, and the test calls Wait before
+// asserting. Wait establishes the happens-before that makes the captured values
+// safe to read. A genuinely broken sink that never delivers will hang until
+// `go test`'s own timeout fires.
 package bustest
 
 import (
 	"context"
 	"errors"
+	"slices"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/duffleone/dfl/events"
 )
@@ -65,33 +72,14 @@ func (e needsEmail) Validate() error {
 	return nil
 }
 
-// --- helpers ---
-
-const wait = time.Second
-
-func recv[T any](t *testing.T, ch <-chan T) T {
-	t.Helper()
-
-	select {
-	case v := <-ch:
-		return v
-	case <-time.After(wait):
-		t.Fatal("timed out waiting for delivery")
-
-		var zero T
-
-		return zero
-	}
-}
-
-func notReceived[T any](t *testing.T, ch <-chan T) {
-	t.Helper()
-
-	select {
-	case <-ch:
-		t.Fatal("handler ran when it should not have")
-	default:
-	}
+// captureError returns an option whose error handler stores the failure into
+// *dst and marks wg done. Add 1 to wg before publishing and Wait after; the
+// captured value is then safe to read.
+func captureError(wg *sync.WaitGroup, dst **events.EventError) events.Option {
+	return events.WithErrorHandler(func(_ context.Context, _ events.Envelope, err *events.EventError) {
+		*dst = err
+		wg.Done()
+	})
 }
 
 // --- subtests ---
@@ -99,9 +87,13 @@ func notReceived[T any](t *testing.T, ch <-chan T) {
 func deliversToSubscriber(t *testing.T, f Factory) {
 	bus, _ := f.New()
 
-	got := make(chan ping, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	var got ping
 	bus.On(func(_ context.Context, e ping) error {
-		got <- e
+		got = e
+		wg.Done()
 
 		return nil
 	})
@@ -110,38 +102,42 @@ func deliversToSubscriber(t *testing.T, f Factory) {
 		t.Fatalf("emit: %v", err)
 	}
 
-	if e := recv(t, got); e.Seq != 7 {
-		t.Errorf("seq = %d, want 7", e.Seq)
+	wg.Wait()
+
+	if got.Seq != 7 {
+		t.Errorf("seq = %d, want 7", got.Seq)
 	}
 }
 
 func fanOutRunsEvery(t *testing.T, f Factory) {
 	bus, _ := f.New()
 
-	a := make(chan struct{}, 1)
-	b := make(chan struct{}, 1)
-	bus.On(func(_ context.Context, _ ping) error { a <- struct{}{}; return nil })
-	bus.On(func(_ context.Context, _ ping) error { b <- struct{}{}; return nil })
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	bus.On(func(_ context.Context, _ ping) error { wg.Done(); return nil })
+	bus.On(func(_ context.Context, _ ping) error { wg.Done(); return nil })
 
 	if err := bus.Emit(context.Background(), ping{Seq: 1}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 
-	recv(t, a)
-	recv(t, b)
+	wg.Wait() // both subscribers ran, or this hangs
 }
 
 func emitReturnsNilOnCleanPublish(t *testing.T, f Factory) {
 	bus, _ := f.New()
 
-	done := make(chan struct{}, 1)
-	bus.On(func(_ context.Context, _ ping) error { done <- struct{}{}; return nil })
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	bus.On(func(_ context.Context, _ ping) error { wg.Done(); return nil })
 
 	if err := bus.Emit(context.Background(), ping{Seq: 1}); err != nil {
 		t.Errorf("emit returned %v, want nil", err)
 	}
 
-	recv(t, done)
+	wg.Wait()
 }
 
 func unknownEventIsNoop(t *testing.T, f Factory) {
@@ -155,8 +151,8 @@ func unknownEventIsNoop(t *testing.T, f Factory) {
 func validationRejectsAtEmit(t *testing.T, f Factory) {
 	bus, _ := f.New()
 
-	ran := make(chan struct{}, 1)
-	bus.On(func(_ context.Context, _ needsEmail) error { ran <- struct{}{}; return nil })
+	ran := false
+	bus.On(func(_ context.Context, _ needsEmail) error { ran = true; return nil })
 
 	err := bus.Emit(context.Background(), needsEmail{Email: ""})
 	if err == nil {
@@ -168,18 +164,21 @@ func validationRejectsAtEmit(t *testing.T, f Factory) {
 		t.Fatalf("emit error = %v, want code validation_failed", err)
 	}
 
-	// Invalid event must not have been published, so no handler ran.
-	notReceived(t, ran)
+	// An invalid event is never published, so no handler is scheduled.
+	if ran {
+		t.Error("handler ran for an event rejected at Emit")
+	}
 }
 
 func validationRejectsAtDeliver(t *testing.T, f Factory) {
-	errs := make(chan *events.EventError, 1)
-	bus, sink := f.New(events.WithErrorHandler(func(_ context.Context, _ events.Envelope, err *events.EventError) {
-		errs <- err
-	}))
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-	ran := make(chan struct{}, 1)
-	bus.On(func(_ context.Context, _ needsEmail) error { ran <- struct{}{}; return nil })
+	var got *events.EventError
+	bus, sink := f.New(captureError(&wg, &got))
+
+	ran := false
+	bus.On(func(_ context.Context, _ needsEmail) error { ran = true; return nil })
 
 	// Inject a raw envelope that bypasses Emit's producer-side validation, as a
 	// different process publishing over a real transport would.
@@ -188,39 +187,49 @@ func validationRejectsAtDeliver(t *testing.T, f Factory) {
 		Payload: []byte(`{"email":""}`),
 	})
 
-	if got := recv(t, errs); got.Code != "validation_failed" {
+	wg.Wait()
+
+	if got.Code != "validation_failed" {
 		t.Errorf("error code = %q, want validation_failed", got.Code)
 	}
 
-	notReceived(t, ran)
+	if ran {
+		t.Error("handler ran for an event rejected at deliver")
+	}
 }
 
 func decodeFailureReachesErrorHandler(t *testing.T, f Factory) {
-	errs := make(chan *events.EventError, 1)
-	bus, sink := f.New(events.WithErrorHandler(func(_ context.Context, _ events.Envelope, err *events.EventError) {
-		errs <- err
-	}))
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-	ran := make(chan struct{}, 1)
-	bus.On(func(_ context.Context, _ ping) error { ran <- struct{}{}; return nil })
+	var got *events.EventError
+	bus, sink := f.New(captureError(&wg, &got))
+
+	ran := false
+	bus.On(func(_ context.Context, _ ping) error { ran = true; return nil })
 
 	_ = sink.Publish(context.Background(), events.Envelope{
 		Name:    ping{}.EventName(),
 		Payload: []byte(`{not json`),
 	})
 
-	if got := recv(t, errs); got.Code != "decode_failed" {
+	wg.Wait()
+
+	if got.Code != "decode_failed" {
 		t.Errorf("error code = %q, want decode_failed", got.Code)
 	}
 
-	notReceived(t, ran)
+	if ran {
+		t.Error("handler ran despite a decode failure")
+	}
 }
 
 func handlerErrorReachesErrorHandler(t *testing.T, f Factory) {
-	errs := make(chan *events.EventError, 1)
-	bus, _ := f.New(events.WithErrorHandler(func(_ context.Context, _ events.Envelope, err *events.EventError) {
-		errs <- err
-	}))
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	var got *events.EventError
+	bus, _ := f.New(captureError(&wg, &got))
 
 	bus.On(func(_ context.Context, _ ping) error {
 		return events.New("boom", events.M{"why": "test"})
@@ -230,7 +239,8 @@ func handlerErrorReachesErrorHandler(t *testing.T, f Factory) {
 		t.Fatalf("emit: %v", err)
 	}
 
-	got := recv(t, errs)
+	wg.Wait()
+
 	if got.Code != "boom" {
 		t.Errorf("error code = %q, want boom", got.Code)
 	}
@@ -256,10 +266,13 @@ func (rejectAll) Validate(_ events.Event) error {
 }
 
 func customCoercerHonoured(t *testing.T, f Factory) {
-	errs := make(chan *events.EventError, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	var got *events.EventError
 	bus, _ := f.New(
 		events.WithCoercer(func(error) *events.EventError { return events.New("coerced", nil) }),
-		events.WithErrorHandler(func(_ context.Context, _ events.Envelope, err *events.EventError) { errs <- err }),
+		captureError(&wg, &got),
 	)
 
 	bus.On(func(_ context.Context, _ ping) error { return errSentinel })
@@ -268,7 +281,9 @@ func customCoercerHonoured(t *testing.T, f Factory) {
 		t.Fatalf("emit: %v", err)
 	}
 
-	if got := recv(t, errs); got.Code != "coerced" {
+	wg.Wait()
+
+	if got.Code != "coerced" {
 		t.Errorf("error code = %q, want coerced", got.Code)
 	}
 }
@@ -278,11 +293,16 @@ var errSentinel = events.New("sentinel", nil)
 func middlewareComposesInOrder(t *testing.T, f Factory) {
 	bus, _ := f.New()
 
-	order := make(chan string, 8)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// order is appended only from the single delivery goroutine, sequentially,
+	// so no lock is needed; wg.Wait fences the read.
+	var order []string
 	tap := func(label string) events.Middleware {
 		return func(next events.HandlerFunc) events.HandlerFunc {
 			return func(ctx context.Context, env events.Envelope) error {
-				order <- label
+				order = append(order, label)
 
 				return next(ctx, env)
 			}
@@ -291,10 +311,9 @@ func middlewareComposesInOrder(t *testing.T, f Factory) {
 
 	bus.Use(tap("group"))
 
-	done := make(chan struct{}, 1)
 	bus.On(func(_ context.Context, _ ping) error {
-		order <- "handler"
-		done <- struct{}{}
+		order = append(order, "handler")
+		wg.Done()
 
 		return nil
 	}, tap("route"))
@@ -303,38 +322,41 @@ func middlewareComposesInOrder(t *testing.T, f Factory) {
 		t.Fatalf("emit: %v", err)
 	}
 
-	recv(t, done)
+	wg.Wait()
 
 	want := []string{"group", "route", "handler"}
-	for _, w := range want {
-		if got := recv(t, order); got != w {
-			t.Errorf("order: got %q, want %q", got, w)
-		}
+	if !slices.Equal(order, want) {
+		t.Errorf("order = %v, want %v", order, want)
 	}
 }
 
 func middlewareShortCircuits(t *testing.T, f Factory) {
-	errs := make(chan *events.EventError, 1)
-	bus, _ := f.New(events.WithErrorHandler(func(_ context.Context, _ events.Envelope, err *events.EventError) {
-		errs <- err
-	}))
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-	ran := make(chan struct{}, 1)
+	var got *events.EventError
+	bus, _ := f.New(captureError(&wg, &got))
+
+	ran := false
 	stop := func(events.HandlerFunc) events.HandlerFunc {
 		return func(_ context.Context, _ events.Envelope) error {
 			return events.New("blocked", nil)
 		}
 	}
 
-	bus.On(func(_ context.Context, _ ping) error { ran <- struct{}{}; return nil }, stop)
+	bus.On(func(_ context.Context, _ ping) error { ran = true; return nil }, stop)
 
 	if err := bus.Emit(context.Background(), ping{Seq: 1}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 
-	if got := recv(t, errs); got.Code != "blocked" {
+	wg.Wait()
+
+	if got.Code != "blocked" {
 		t.Errorf("error code = %q, want blocked", got.Code)
 	}
 
-	notReceived(t, ran)
+	if ran {
+		t.Error("handler ran despite a short-circuiting middleware")
+	}
 }

@@ -37,7 +37,7 @@ type evtOrder struct {
 	ID string `json:"id"`
 }
 
-func (evtOrder) EventName() string  { return "order.shipped" }
+func (evtOrder) EventName() string   { return "order.shipped" }
 func (evtOrder) URLSafeName() string { return "orders-shipped" }
 
 func TestEmitStampsEventNameOnError(t *testing.T) {

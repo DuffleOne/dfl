@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"log"
+	"sync"
 
 	"github.com/duffleone/dfl/events"
 )
@@ -61,16 +62,18 @@ func (rejectOdd) Validate(e events.Event) error {
 }
 
 func main() {
-	// done collects one signal per finished delivery (success or error) so the
-	// program waits for the two async events before exiting.
-	done := make(chan struct{}, 2)
+	// wg tracks the two async deliveries that finish: one success, one that
+	// panics and lands in the error handler. The program waits for both before
+	// exiting.
+	var wg sync.WaitGroup
+	wg.Add(2)
 
 	bus := events.NewBus(
 		events.NewMemSink(),
 		events.WithValidator(rejectOdd{}),
 		events.WithErrorHandler(func(_ context.Context, env events.Envelope, err *events.EventError) {
 			log.Printf("error handler: %s failed with %s", env.Name, err.Code)
-			done <- struct{}{}
+			wg.Done()
 		}),
 	)
 
@@ -82,7 +85,7 @@ func main() {
 		}
 
 		log.Printf("beat %d", b.N)
-		done <- struct{}{}
+		wg.Done()
 
 		return nil
 	})
@@ -99,6 +102,5 @@ func main() {
 		log.Printf("emit rejected before publish: %v", err)
 	}
 
-	<-done
-	<-done
+	wg.Wait()
 }

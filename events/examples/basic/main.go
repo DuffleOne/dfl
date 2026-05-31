@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"log"
+	"sync"
 
 	"github.com/duffleone/dfl/events"
 )
@@ -24,11 +25,12 @@ func (UserCreated) EventName() string { return "user.created" }
 func main() {
 	bus := events.NewBus(events.NewMemSink())
 
-	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 
 	bus.On(func(_ context.Context, e UserCreated) error {
 		log.Printf("welcome %s (%s)", e.Email, e.ID)
-		close(done)
+		wg.Done()
 
 		return nil
 	})
@@ -38,5 +40,5 @@ func main() {
 	}
 
 	// On delivery is async, so wait for the handler before the program exits.
-	<-done
+	wg.Wait()
 }

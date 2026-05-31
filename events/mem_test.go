@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/duffleone/dfl/events"
 	"github.com/duffleone/dfl/events/internal/bustest"
@@ -23,38 +22,35 @@ func TestMemSinkConformance(t *testing.T) {
 	})
 }
 
-// TestMemSinkDetachedContext checks the mem-specific guarantee that a handler
-// keeps running on a context that is not cancelled when the emitter's context
-// is. The handler blocks until the parent ctx has been cancelled, then reports
-// its own ctx error, which must be nil.
+// TestMemSinkDetachedContext checks the mem-specific guarantee that delivery
+// runs on a context that is not cancelled with the emitter's. The parent
+// context is already cancelled at Emit time, yet the handler's context must not
+// be.
 func TestMemSinkDetachedContext(t *testing.T) {
 	bus := events.NewBus(events.NewMemSink())
 
-	proceed := make(chan struct{})
-	result := make(chan error, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
 
+	var handlerErr error
 	bus.On(func(ctx context.Context, _ evtPing) error {
-		<-proceed
-		result <- ctx.Err()
+		handlerErr = ctx.Err()
+		wg.Done()
 
 		return nil
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel the parent before publishing
+
 	if err := bus.Emit(ctx, evtPing{Seq: 1}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 
-	cancel()       // cancel the parent after Emit has returned
-	close(proceed) // let the handler observe its own context
+	wg.Wait()
 
-	select {
-	case err := <-result:
-		if err != nil {
-			t.Errorf("handler ctx err = %v, want nil (context should be detached)", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("handler did not run")
+	if handlerErr != nil {
+		t.Errorf("handler ctx err = %v, want nil (context should be detached)", handlerErr)
 	}
 }
 

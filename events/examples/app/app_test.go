@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/duffleone/dfl/events"
 	dflhttp "github.com/duffleone/dfl/http"
@@ -16,21 +16,25 @@ import (
 func TestInProcess(t *testing.T) {
 	bus := events.NewBus(events.NewMemSink())
 
-	welcomed := make(chan string, 1)
-	audited := make(chan string, 1)
-	bus.On(func(_ context.Context, e UserCreated) error { welcomed <- e.Email; return nil })
-	bus.On(func(_ context.Context, e UserCreated) error { audited <- e.ID; return nil })
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	var gotEmail, gotID string
+	bus.On(func(_ context.Context, e UserCreated) error { gotEmail = e.Email; wg.Done(); return nil })
+	bus.On(func(_ context.Context, e UserCreated) error { gotID = e.ID; wg.Done(); return nil })
 
 	if err := bus.Emit(context.Background(), UserCreated{ID: "1", Email: "a@b.com"}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 
-	if got := recv(t, welcomed); got != "a@b.com" {
-		t.Errorf("welcome email = %q, want a@b.com", got)
+	wg.Wait()
+
+	if gotEmail != "a@b.com" {
+		t.Errorf("welcome email = %q, want a@b.com", gotEmail)
 	}
 
-	if got := recv(t, audited); got != "1" {
-		t.Errorf("audit id = %q, want 1", got)
+	if gotID != "1" {
+		t.Errorf("audit id = %q, want 1", gotID)
 	}
 }
 
@@ -61,19 +65,6 @@ func TestOverHTTP(t *testing.T) {
 				t.Errorf("status = %d, want %d", got, tc.want)
 			}
 		})
-	}
-}
-
-func recv(t *testing.T, ch <-chan string) string {
-	t.Helper()
-
-	select {
-	case v := <-ch:
-		return v
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for delivery")
-
-		return ""
 	}
 }
 
