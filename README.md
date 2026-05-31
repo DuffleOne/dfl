@@ -69,7 +69,7 @@ func main() {
 }
 ```
 
-Working examples in [`events/examples`](./events/examples), including a dependency-free reference [GCP Pub/Sub sink](./events/examples/pubsub) showing how an external transport plugs in.
+Ready-made cloud transports live in their own modules so the core stays dependency-free: [`events/aws`](./events/aws) (SQS, SNS, EventBridge) and [`events/gcp`](./events/gcp) (Pub/Sub), each with both pull (a receiver loop) and push (an `http.Handler` for the transport's HTTP delivery) where the transport supports it. Plain in-process examples are in [`events/examples`](./events/examples).
 
 ### [`db/pgxdb`](./db/pgxdb)
 
