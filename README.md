@@ -41,6 +41,36 @@ Working examples in [`http/examples/std`](./http/examples/std) and [`http/exampl
 
 Optional `Coercer` for `samber/oops` errors lives at [`http/oops`](./http/oops).
 
+### [`events`](./events)
+
+A typed event bus, the producer/consumer twin of `http`. You define an event struct, register handlers for it, and emit it; the bus encodes, validates, fans out, and coerces failures into one structured error, so there's no manual marshalling or error plumbing.
+
+An event names itself with `EventName() string`. There are two ways to handle one, both taking the same `func(context.Context, E) error`: `bus.On(handler)` subscribes in-process (delivery is async, and handler errors go to a bus error handler), and `bus.RegisterEndpoint(router, handler)` exposes it over HTTP as `POST /events/{name}` that decodes the event from the JSON body, bridging into the `http` package. `bus.Emit(ctx, e)` publishes and blocks only until the event is committed for delivery.
+
+A `Bus` wraps a pluggable `Sink` the way the `Router` wraps a `Mux`: the in-memory sink ships in the package, and external transports (NATS, a `pgxdb` outbox, a webhook fan-out) drop in behind the same interface. An optional `Validate() error` on the event runs on both publish and delivery, and the validator is pluggable.
+
+```go
+type UserCreated struct {
+    ID    string `json:"id"`
+    Email string `json:"email"`
+}
+
+func (UserCreated) EventName() string { return "user.created" }
+
+func welcome(ctx context.Context, e UserCreated) error {
+    log.Printf("welcome %s", e.Email)
+    return nil
+}
+
+func main() {
+    bus := events.NewBus(events.NewMemSink())
+    bus.On(welcome)
+    _ = bus.Emit(context.Background(), UserCreated{ID: "1", Email: "a@b.com"})
+}
+```
+
+Working examples in [`events/examples`](./events/examples).
+
 ### [`db/pgxdb`](./db/pgxdb)
 
 Wrapper around `jackc/pgx/v5`. Transaction shapes (read-only, read-committed, serializable with retry), generic `Get`/`Scalar`/`Select` scanners, and an escape hatch to `*database/sql`. The `Querier` interface is satisfied by both the pool and `pgx.Tx`, so the same helper functions work inside or outside a transaction.
