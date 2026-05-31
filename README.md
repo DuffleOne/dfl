@@ -69,7 +69,7 @@ func main() {
 }
 ```
 
-Working examples in [`events/examples`](./events/examples).
+Working examples in [`events/examples`](./events/examples), including a dependency-free reference [GCP Pub/Sub sink](./events/examples/pubsub) showing how an external transport plugs in.
 
 ### [`db/pgxdb`](./db/pgxdb)
 

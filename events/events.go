@@ -131,8 +131,9 @@ func (b *Bus) Use(mw ...Middleware) {
 // Delivery is asynchronous. When an event of E's name is published, the sink
 // runs the deliver callback on its own goroutine: it decodes the payload into
 // E, validates it, and calls handler. A non-nil error (from decode, validation,
-// middleware, or the handler) is coerced and passed to the bus ErrorHandler, it
-// is not returned to whoever called Emit.
+// middleware, or the handler) is coerced and passed to the bus ErrorHandler,
+// and also returned to the sink so a durable transport can retry. It is never
+// returned to whoever called Emit.
 func (b *Bus) On[E Event](handler func(context.Context, E) error, mw ...Middleware) {
 	name, err := nameOf[E]()
 	if err != nil {
@@ -166,11 +167,17 @@ func (b *Bus) On[E Event](handler func(context.Context, E) error, mw ...Middlewa
 			return nil
 		}
 
-		if coerced := b.coercer(err); coerced != nil {
-			b.onError(ctx, env, coerced.withEvent(env.Name))
+		coerced := b.coercer(err)
+		if coerced == nil {
+			return nil
 		}
 
-		return nil
+		b.onError(ctx, env, coerced.withEvent(env.Name))
+
+		// Returned to the sink as well as the ErrorHandler: a fire-and-forget
+		// sink like MemSink ignores it, but a durable transport can use it to
+		// nack and have the message redelivered.
+		return coerced
 	}
 
 	b.sink.Subscribe(name, deliver)

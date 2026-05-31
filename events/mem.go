@@ -11,9 +11,9 @@ import (
 //
 // Delivery is asynchronous: Publish launches the goroutines and returns, so by
 // the time it returns the event is certain to fire, but the handlers themselves
-// run in the background and in no guaranteed order. Errors a deliver returns are
-// dropped here; the bus's deliver closure routes handler errors to the bus
-// ErrorHandler before they ever reach the sink.
+// run in the background and in no guaranteed order. A deliver error is dropped
+// here, since the bus has already routed it to the ErrorHandler; a durable
+// transport would nack on it instead (see events/examples/pubsub).
 type MemSink struct {
 	mu   sync.RWMutex
 	subs map[string][]HandlerFunc
