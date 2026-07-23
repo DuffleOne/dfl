@@ -22,10 +22,8 @@ func (r *Router) adapt[Req, Resp any](handler func(context.Context, Req) (Resp, 
 		parser = DefaultRequestParser
 	}
 
-	if pre, ok := parser.(preparable); ok {
-		if err := pre.PrepareFor[Req](); err != nil {
-			return nil, err
-		}
+	if err := parser.PrepareFor[Req](); err != nil {
+		return nil, err
 	}
 
 	isEmptyResp := false

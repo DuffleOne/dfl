@@ -47,8 +47,6 @@ Runnable examples in [`examples/pull`](./examples/pull) and
 
 ## Notes
 
-- `go.sum` is not checked in. The core targets a Go with generic methods the
-  current toolchain doesn't parse, so `go mod tidy` can't run yet. Once the core
-  builds, run `go mod tidy` here to pin the version and populate `go.sum`.
+- Needs Go 1.27 or later: the core uses generic methods, added in that release.
 - The push ingress does not verify the request's OIDC token. Verify it in
   production so only Pub/Sub can deliver to the endpoint.

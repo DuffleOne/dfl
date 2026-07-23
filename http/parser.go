@@ -13,27 +13,13 @@ import (
 	"sync"
 )
 
-// RequestParser populates a typed request value from an *http.Request. The
-// generic Parse method lets a single parser handle every handler shape in
-// the router; routers that don't override use DefaultRequestParser.
-//
-// Custom parsers are useful when you want a binding model dflhttp doesn't
-// ship out of the box (form bodies, msgpack, gRPC-style transcoding, an
-// auth-context-aware Req that pulls the caller from middleware, etc).
-type RequestParser interface {
-	Parse[Req any](r *http.Request) (Req, error)
-}
+// SetterFunc parses a raw path or query string into a single struct field.
+// dst is the addressable field; raw is the value as it arrived on the wire.
+type SetterFunc func(dst reflect.Value, raw string) error
 
-// preparable is an optional interface a RequestParser can satisfy to
-// validate a Req shape at handler registration. The default parser
-// implements it via PrepareFor; adapt type-asserts and calls it so tag
-// errors surface eagerly rather than on the first request.
-type preparable interface {
-	PrepareFor[Req any]() error
-}
-
-// DefaultRequestParser is the parser dflhttp uses when no other is set on
-// the Router via WithRequestParser. It binds fields by struct tag:
+// RequestParser populates a typed request value from an *http.Request. A
+// single parser handles every handler shape in the router; routers that
+// don't override use DefaultRequestParser. It binds fields by struct tag:
 //
 //	`path:"name"`  — pulled from r.PathValue(name)
 //	`query:"name"` — pulled from r.URL.Query().Get(name)
@@ -41,13 +27,40 @@ type preparable interface {
 //
 // Per-Req binding plans are cached, so the reflect cost is paid once per
 // (type, parser) pair.
-var DefaultRequestParser RequestParser = &defaultRequestParser{}
+//
+// RequestParser is a concrete type rather than an interface because Parse is
+// generic over Req. Go 1.27 allows type parameters on methods, but only on
+// concrete types: interface methods still cannot have them, and a generic
+// method never satisfies an interface method. Customise a parser by setting
+// the hook fields below rather than by implementing it.
+//
+// The zero value is ready to use. Set the hooks before handing the parser to
+// a Router: they are read as binding plans are built, and changing them once
+// requests are in flight has no effect on plans already cached.
+type RequestParser struct {
+	// DecodeBody replaces JSON body binding wholesale. It receives the
+	// request body and a pointer to the struct being bound, and is
+	// responsible for populating whichever fields the wire format carries.
+	// Path and query fields are already set by the time it runs. Leave it
+	// nil for the built-in JSON binding, which touches only json-tagged
+	// fields and reports errors per field.
+	DecodeBody func(body io.Reader, dst any) error
 
-type defaultRequestParser struct {
+	// Setters overrides how path and query strings are parsed into fields of
+	// a given type. An entry here wins over the built-in handling for that
+	// type, so this is how you bind a field type the parser would otherwise
+	// reject, or change how one it already knows is read.
+	Setters map[reflect.Type]SetterFunc
+
 	cache sync.Map // reflect.Type -> *binder
 }
 
-func (p *defaultRequestParser) Parse[Req any](r *http.Request) (Req, error) {
+// DefaultRequestParser is the parser dflhttp uses when no other is set on
+// the Router via WithRequestParser.
+var DefaultRequestParser = &RequestParser{}
+
+// Parse builds a Req from r, binding path, query and body per Req's tags.
+func (p *RequestParser) Parse[Req any](r *http.Request) (Req, error) {
 	var req Req
 
 	b, err := p.binderFor(reflect.TypeFor[Req]())
@@ -55,7 +68,7 @@ func (p *defaultRequestParser) Parse[Req any](r *http.Request) (Req, error) {
 		return req, err
 	}
 
-	if err := b.bind(r, &req); err != nil {
+	if err := b.bind(p, r, &req); err != nil {
 		return req, err
 	}
 
@@ -64,18 +77,18 @@ func (p *defaultRequestParser) Parse[Req any](r *http.Request) (Req, error) {
 
 // PrepareFor compiles and caches the binding plan for Req. adapt calls this
 // at registration to surface tag errors before the first request.
-func (p *defaultRequestParser) PrepareFor[Req any]() error {
+func (p *RequestParser) PrepareFor[Req any]() error {
 	_, err := p.binderFor(reflect.TypeFor[Req]())
 
 	return err
 }
 
-func (p *defaultRequestParser) binderFor(t reflect.Type) (*binder, error) {
+func (p *RequestParser) binderFor(t reflect.Type) (*binder, error) {
 	if cached, ok := p.cache.Load(t); ok {
 		return cached.(*binder), nil
 	}
 
-	b, err := buildBinder(t)
+	b, err := p.buildBinder(t)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +131,7 @@ func isEmptyType(t reflect.Type) bool {
 // buildBinder reflects on t once and returns a binder that knows where each
 // field of t comes from (path, query, or body). t may be a struct, a
 // pointer to a struct, Empty, or *Empty.
-func buildBinder(t reflect.Type) (*binder, error) {
+func (p *RequestParser) buildBinder(t reflect.Type) (*binder, error) {
 	if isEmptyType(t) {
 		return &binder{noop: true}, nil
 	}
@@ -139,7 +152,7 @@ func buildBinder(t reflect.Type) (*binder, error) {
 		}
 
 		if pathTag := f.Tag.Get("path"); pathTag != "" {
-			setter, err := stringSetter(f.Type)
+			setter, err := p.stringSetter(f.Type)
 			if err != nil {
 				return nil, fmt.Errorf("field %s: %w", f.Name, err)
 			}
@@ -150,7 +163,7 @@ func buildBinder(t reflect.Type) (*binder, error) {
 		}
 
 		if queryTag := f.Tag.Get("query"); queryTag != "" {
-			setter, err := stringSetter(f.Type)
+			setter, err := p.stringSetter(f.Type)
 			if err != nil {
 				return nil, fmt.Errorf("field %s: %w", f.Name, err)
 			}
@@ -173,7 +186,7 @@ func buildBinder(t reflect.Type) (*binder, error) {
 // bind populates dst (a *Req) from r. When Req is itself a pointer to a
 // struct, dst is **Struct; we walk one indirection and allocate the inner
 // pointer so the binder can write into a real value.
-func (b *binder) bind(r *http.Request, dst any) error {
+func (b *binder) bind(p *RequestParser, r *http.Request, dst any) error {
 	if b.noop {
 		return nil
 	}
@@ -217,7 +230,7 @@ func (b *binder) bind(r *http.Request, dst any) error {
 	}
 
 	if b.hasBody {
-		if err := b.bindBody(r, v); err != nil {
+		if err := b.bindBody(p, r, v); err != nil {
 			return err
 		}
 	}
@@ -225,7 +238,13 @@ func (b *binder) bind(r *http.Request, dst any) error {
 	return nil
 }
 
-func (b *binder) bindBody(r *http.Request, dst reflect.Value) error {
+func (b *binder) bindBody(p *RequestParser, r *http.Request, dst reflect.Value) error {
+	// A custom decoder owns the body outright: it picks the wire format, so
+	// the JSON content-type check and per-field binding below don't apply.
+	if p.DecodeBody != nil {
+		return p.DecodeBody(r.Body, dst.Addr().Interface())
+	}
+
 	if ct := r.Header.Get("Content-Type"); ct != "" {
 		mt, _, _ := strings.Cut(ct, ";")
 		if strings.TrimSpace(mt) != "application/json" {
@@ -263,8 +282,13 @@ var textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()
 
 // stringSetter returns a function that parses a string into a typed
 // reflect.Value. Used for path and query params, which are always strings
-// on the wire. Supports the basic kinds plus encoding.TextUnmarshaler.
-func stringSetter(t reflect.Type) (func(reflect.Value, string) error, error) {
+// on the wire. An entry in p.Setters wins; otherwise the basic kinds plus
+// encoding.TextUnmarshaler are supported.
+func (p *RequestParser) stringSetter(t reflect.Type) (SetterFunc, error) {
+	if custom, ok := p.Setters[t]; ok {
+		return custom, nil
+	}
+
 	if reflect.PointerTo(t).Implements(textUnmarshalerType) {
 		return func(v reflect.Value, s string) error {
 			tu, ok := v.Addr().Interface().(encoding.TextUnmarshaler)

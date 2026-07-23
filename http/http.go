@@ -87,7 +87,7 @@ type Router struct {
 	mux           Mux
 	register      func(method, pattern string, h http.HandlerFunc)
 	coercer       Coercer
-	requestParser RequestParser
+	requestParser *RequestParser
 	prefix        string
 	middleware    []Middleware
 }
@@ -107,7 +107,7 @@ func WithCoercer(c Coercer) Option {
 
 // WithRequestParser sets the RequestParser used to populate typed Req
 // values from the raw *http.Request. Defaults to DefaultRequestParser.
-func WithRequestParser(p RequestParser) Option {
+func WithRequestParser(p *RequestParser) Option {
 	return func(r *Router) {
 		r.requestParser = p
 	}

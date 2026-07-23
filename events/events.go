@@ -121,7 +121,7 @@ func (p PluginFuncs) WrapDeliver(next HandlerFunc) HandlerFunc {
 // On (or RegisterEndpoint), then publish with Emit.
 type Bus struct {
 	sink       Sink
-	codec      Codec
+	codec      *Codec
 	validator  Validator
 	coercer    Coercer
 	onError    ErrorHandler
@@ -134,7 +134,7 @@ type Option func(*Bus)
 
 // WithCodec sets the Codec used to encode and decode events. Defaults to
 // DefaultCodec (JSON).
-func WithCodec(c Codec) Option {
+func WithCodec(c *Codec) Option {
 	return func(b *Bus) {
 		b.codec = c
 	}
@@ -209,10 +209,8 @@ func (b *Bus) On[E Event](handler func(context.Context, E) error, mw ...Middlewa
 		panic("dflevents: " + err.Error())
 	}
 
-	if pre, ok := b.codec.(preparable); ok {
-		if err := pre.PrepareFor[E](); err != nil {
-			panic("dflevents: " + err.Error())
-		}
+	if err := b.codec.PrepareFor[E](); err != nil {
+		panic("dflevents: " + err.Error())
 	}
 
 	base := HandlerFunc(func(ctx context.Context, env Envelope) error {
