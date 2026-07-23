@@ -13,7 +13,8 @@ import (
 // the time it returns the event is certain to fire, but the handlers themselves
 // run in the background and in no guaranteed order. A deliver error is dropped
 // here, since the bus has already routed it to the ErrorHandler; a durable
-// transport would nack on it instead (see events/examples/pubsub).
+// transport would nack on it instead (see the events/aws and events/gcp
+// modules).
 type MemSink struct {
 	mu   sync.RWMutex
 	subs map[string][]HandlerFunc

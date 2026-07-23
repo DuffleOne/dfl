@@ -8,8 +8,9 @@ import "context"
 //
 // MemSink, the in-memory implementation, ships in this package. External sinks
 // (a GCP Pub/Sub topic, a NATS subject, a pgxdb outbox table, an HTTP webhook
-// fan-out) implement the same two methods. See events/examples/pubsub for a
-// reference Pub/Sub sink.
+// fan-out) implement the same two methods. The events/aws and events/gcp
+// modules hold the real cloud implementations; Dispatcher is the reusable
+// Subscribe half for building more.
 //
 // Publish must not report success until the event is certain to be delivered:
 // for MemSink that means every subscriber goroutine has been launched, and for
