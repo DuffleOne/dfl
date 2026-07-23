@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -13,9 +14,9 @@ import (
 // invoking the handler and writing the response.
 //
 // All reflection lives behind RequestParser. Adapt itself touches no
-// reflect — Req and Resp are pure type parameters as far as it's
-// concerned, only known to be either a *Empty (or Empty) for 204, or
-// something else for JSON encoding.
+// reflect: Req and Resp are pure type parameters as far as it's concerned,
+// only known to be either a *Empty (or Empty) for 204, or something else
+// for JSON encoding.
 func (r *Router) adapt[Req, Resp any](handler func(context.Context, Req) (Resp, error)) (HandlerFunc, error) {
 	parser := r.requestParser
 	if parser == nil {
@@ -51,8 +52,16 @@ func (r *Router) adapt[Req, Resp any](handler func(context.Context, Req) (Resp, 
 			return nil
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		// Encode to a buffer first, so a Resp that fails to encode surfaces
+		// as a clean error response rather than a half-written 200.
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(resp); err != nil {
+			return err
+		}
 
-		return json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = buf.WriteTo(w)
+
+		return nil
 	}, nil
 }

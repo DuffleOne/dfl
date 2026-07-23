@@ -20,6 +20,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -56,6 +57,57 @@ type Middleware func(next HandlerFunc) HandlerFunc
 // hierarchy (samber/oops, validation libs, etc.).
 type Coercer func(error) *ReqError
 
+// ErrorWriter writes the HTTP response for a failed request. It receives the
+// error exactly as the handler, middleware, or request binding returned it,
+// before any coercion, and owns the response outright: status, headers, and
+// body.
+//
+// When no ErrorWriter is set, the Router coerces the error with its Coercer
+// and writes the resulting *ReqError as JSON. Set one with WithErrorWriter
+// when the error wire shape is yours to define: the Router then never
+// consults the Coercer, and your own error types arrive intact for
+// errors.As. Binding failures still surface as *ReqError (see the codes on
+// RequestParser), so a custom writer should handle that type too, or lean on
+// DefaultErrorWriter as its fallback.
+type ErrorWriter func(w http.ResponseWriter, r *http.Request, err error)
+
+// DefaultErrorWriter returns the ErrorWriter the Router uses when none is
+// set: it coerces the error with c (DefaultCoercer when c is nil) and writes
+// the resulting *ReqError as JSON with its StatusCode. A nil coercion result
+// writes a bare 500.
+//
+// It's exported so a custom writer can keep it as the fallback for errors it
+// doesn't recognise:
+//
+//	fallback := dflhttp.DefaultErrorWriter(nil)
+//	r := dflhttp.NewRouter(mux, dflhttp.WithErrorWriter(
+//	    func(w http.ResponseWriter, r *http.Request, err error) {
+//	        var myErr *myapp.Error
+//	        if errors.As(err, &myErr) {
+//	            writeMyError(w, myErr)
+//
+//	            return
+//	        }
+//
+//	        fallback(w, r, err)
+//	    }))
+func DefaultErrorWriter(c Coercer) ErrorWriter {
+	if c == nil {
+		c = DefaultCoercer
+	}
+
+	return func(w http.ResponseWriter, _ *http.Request, err error) {
+		reqErr := c(err)
+		if reqErr == nil {
+			w.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		writeJSON(w, reqErr.StatusCode, reqErr)
+	}
+}
+
 // Mux is the minimum a routing implementation must satisfy: be an
 // http.Handler so the Router can serve traffic. NewRouter further requires
 // the mux to support either MethodMux- or PatternMux-style registration.
@@ -88,6 +140,7 @@ type Router struct {
 	mux           Mux
 	register      func(method, pattern string, h http.HandlerFunc)
 	coercer       Coercer
+	errorWriter   ErrorWriter
 	requestParser *RequestParser
 	prefix        string
 	middleware    []Middleware
@@ -99,10 +152,21 @@ var _ http.Handler = (*Router)(nil)
 type Option func(*Router)
 
 // WithCoercer sets the Coercer used to project handler and middleware errors
-// onto *ReqError. Defaults to DefaultCoercer.
+// onto *ReqError. Defaults to DefaultCoercer. It only affects the default
+// error path: a Router with a custom ErrorWriter never runs the Coercer.
 func WithCoercer(c Coercer) Option {
 	return func(r *Router) {
 		r.coercer = c
+	}
+}
+
+// WithErrorWriter sets the ErrorWriter that turns errors into HTTP
+// responses, replacing the default coerce-to-ReqError-and-JSON path
+// entirely. Use it when callers should own the error response shape rather
+// than emitting dfl's {code, status_code, meta} struct.
+func WithErrorWriter(ew ErrorWriter) Option {
+	return func(r *Router) {
+		r.errorWriter = ew
 	}
 }
 
@@ -157,25 +221,32 @@ func (r *Router) HandleFunc(method, path string, h HandlerFunc, mw ...Middleware
 	fullPath := r.prefix + path
 	chain := combineChain(r.middleware, mw)
 	wrapped := applyMiddleware(h, chain)
-	coercer := r.coercer
+
+	writeErr := r.errorWriter
+	if writeErr == nil {
+		writeErr = DefaultErrorWriter(r.coercer)
+	}
 
 	r.register(method, fullPath, func(w http.ResponseWriter, req *http.Request) {
 		if err := wrapped(w, req); err != nil {
-			writeError(w, err, coercer)
+			writeErr(w, req, err)
 		}
 	})
 }
 
 // Group returns a sub-router whose routes are prefixed with prefix and that
-// inherits the parent's middleware as a snapshot at Group time. Middleware
-// added to the parent after Group does not propagate to the returned group.
+// inherits the parent's configuration, with middleware taken as a snapshot
+// at Group time. Middleware added to the parent after Group does not
+// propagate to the returned group.
 func (r *Router) Group(prefix string) *Router {
 	return &Router{
-		mux:        r.mux,
-		register:   r.register,
-		coercer:    r.coercer,
-		prefix:     r.prefix + prefix,
-		middleware: append([]Middleware(nil), r.middleware...),
+		mux:           r.mux,
+		register:      r.register,
+		coercer:       r.coercer,
+		errorWriter:   r.errorWriter,
+		requestParser: r.requestParser,
+		prefix:        r.prefix + prefix,
+		middleware:    append([]Middleware(nil), r.middleware...),
 	}
 }
 
@@ -224,15 +295,18 @@ func applyMiddleware(h HandlerFunc, mw []Middleware) HandlerFunc {
 	return h
 }
 
-func writeError(w http.ResponseWriter, err error, coercer Coercer) {
-	reqErr := coercer(err)
-	if reqErr == nil {
+// writeJSON encodes v to a buffer first so an encoding failure can't leave a
+// half-written body behind an already-committed 2xx status; a value that
+// won't encode degrades to a bare 500.
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(v); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(reqErr.StatusCode)
-	_ = json.NewEncoder(w).Encode(reqErr)
+	w.WriteHeader(status)
+	_, _ = buf.WriteTo(w)
 }
