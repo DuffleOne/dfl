@@ -32,3 +32,12 @@ jobs:
       # carry generic methods), so this is v2.12.2 regardless.
       - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
       - run: golangci-lint run ./...
+
+      # staticcheck runs separately, not through golangci-lint. The v0.7.0 that
+      # golangci-lint v2.12.2 vendors panics building Go 1.27's stdlib
+      # ("unexpected expr: *ast.KeyValueExpr" in internal/poll). It only shows
+      # up on linux, so it passes locally on a mac and fails here. v0.8.0-rc.1
+      # is fine. Drop this step and re-enable staticcheck in .golangci.yml once
+      # golangci-lint vendors v0.8 or later.
+      - run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.0-rc.1
+      - run: staticcheck ./...
