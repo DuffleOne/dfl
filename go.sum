@@ -22,8 +22,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/samber/lo v1.53.0 h1:t975lj2py4kJPQ6haz1QMgtId2gtmfktACxIXArw3HM=
 github.com/samber/lo v1.53.0/go.mod h1:4+MXEGsJzbKGaUEQFKBq2xtfuznW9oz/WrgyzMzRoM0=
-github.com/samber/oops v1.22.0 h1:fmWRC3YRUXFzpZ9Vs4nuckrsnCHv1cFV/bEm00Wvm0Y=
-github.com/samber/oops v1.22.0/go.mod h1:8ZDRxwQdphVhmLtEX9I6134LHJe5yeCV8cTfHz3m91Y=
+github.com/samber/oops v1.23.0 h1:27aIZSRreSy4yveT0ZV4s3gLZp7/ra9Zbb84gwWbA9I=
+github.com/samber/oops v1.23.0/go.mod h1:8ZDRxwQdphVhmLtEX9I6134LHJe5yeCV8cTfHz3m91Y=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
