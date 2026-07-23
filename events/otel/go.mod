@@ -5,7 +5,7 @@
 // The sdk and stdouttrace requires are only used by the example.
 module github.com/duffleone/dfl/events/otel
 
-go 1.27
+go 1.27rc2
 
 require (
 	github.com/duffleone/dfl v0.0.0-00010101000000-000000000000
