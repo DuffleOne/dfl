@@ -11,9 +11,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -24,13 +26,10 @@ import (
 // Factory tells the suite how to build a fresh router for each test. Each
 // backend supplies one of these in its *_test.go.
 type Factory struct {
-	// New returns a default-configured router and the same instance as an
-	// http.Handler for ServeHTTP dispatch.
-	New func() (*dflhttp.Router, http.Handler)
-
-	// NewWithCoercer returns a router configured with the given Coercer.
-	// Used by the WithCoercer test only.
-	NewWithCoercer func(dflhttp.Coercer) (*dflhttp.Router, http.Handler)
+	// New returns a router over a fresh instance of the backend, configured
+	// with opts, and the same instance as an http.Handler for ServeHTTP
+	// dispatch.
+	New func(opts ...dflhttp.Option) (*dflhttp.Router, http.Handler)
 }
 
 // Run executes the full conformance suite against f. Call it from a single
@@ -59,6 +58,10 @@ func Run(t *testing.T, f Factory) {
 	t.Run("UseAfterGroupDoesNotPropagate", func(t *testing.T) { useAfterGroupDoesNotPropagate(t, f) })
 	t.Run("PerRouteMiddleware", func(t *testing.T) { perRouteMiddleware(t, f) })
 	t.Run("WithCoercer", func(t *testing.T) { withCoercer(t, f) })
+	t.Run("WithErrorWriterOwnsResponse", func(t *testing.T) { withErrorWriterOwnsResponse(t, f) })
+	t.Run("ErrorWriterSeesOriginalError", func(t *testing.T) { errorWriterSeesOriginalError(t, f) })
+	t.Run("ErrorWriterSeesBindingFailures", func(t *testing.T) { errorWriterSeesBindingFailures(t, f) })
+	t.Run("GroupInheritsConfig", func(t *testing.T) { groupInheritsConfig(t, f) })
 	t.Run("PanicOnInvalidReq", func(t *testing.T) { panicOnInvalidReq(t, f) })
 }
 
@@ -655,7 +658,7 @@ func withCoercer(t *testing.T, f Factory) {
 		return dflhttp.New(http.StatusTeapot, "teapot", nil)
 	}
 
-	r, h := f.NewWithCoercer(teapot)
+	r, h := f.New(dflhttp.WithCoercer(teapot))
 
 	r.Handle(http.MethodGet, "/x",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
@@ -666,6 +669,165 @@ func withCoercer(t *testing.T, f Factory) {
 
 	if rec.Code != http.StatusTeapot {
 		t.Errorf("status = %d, want 418", rec.Code)
+	}
+}
+
+// withErrorWriterOwnsResponse: a custom ErrorWriter replaces the
+// coerce-and-JSON path outright. The writer picks the status, headers, and
+// body, and the Coercer is never consulted (the one installed here fails
+// the test if it runs).
+func withErrorWriterOwnsResponse(t *testing.T, f Factory) {
+	t.Helper()
+
+	coercerRan := false
+
+	r, h := f.New(
+		dflhttp.WithCoercer(func(err error) *dflhttp.ReqError {
+			coercerRan = true
+
+			return dflhttp.DefaultCoercer(err)
+		}),
+		dflhttp.WithErrorWriter(func(w http.ResponseWriter, _ *http.Request, err error) {
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = fmt.Fprintf(w, `{"detail":%q}`, err.Error())
+		}),
+	)
+
+	r.Handle(http.MethodGet, "/x",
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return nil, errors.New("bespoke failure")
+		})
+
+	rec := do(h, http.MethodGet, "/x", nil, nil)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", rec.Code)
+	}
+
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("Content-Type = %q, want application/problem+json", ct)
+	}
+
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"detail":"bespoke failure"}` {
+		t.Errorf("body = %q, want the writer's own shape", got)
+	}
+
+	if coercerRan {
+		t.Error("coercer ran despite a custom ErrorWriter")
+	}
+}
+
+// errorWriterSeesOriginalError: the writer receives the error exactly as
+// the handler returned it, un-coerced, so errors.Is reaches the handler's
+// own sentinel through any wrapping.
+func errorWriterSeesOriginalError(t *testing.T, f Factory) {
+	t.Helper()
+
+	sentinel := errors.New("sentinel")
+
+	var seen error
+
+	r, h := f.New(dflhttp.WithErrorWriter(func(w http.ResponseWriter, _ *http.Request, err error) {
+		seen = err
+
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	r.Handle(http.MethodGet, "/x",
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return nil, fmt.Errorf("wrapped: %w", sentinel)
+		})
+
+	do(h, http.MethodGet, "/x", nil, nil)
+
+	if !errors.Is(seen, sentinel) {
+		t.Errorf("writer saw %v, want the handler's original error chain", seen)
+	}
+}
+
+// errorWriterSeesBindingFailures: request binding failures flow through the
+// custom writer too, arriving as the *ReqError the parser produced, so a
+// writer that owns the wire shape can map them.
+func errorWriterSeesBindingFailures(t *testing.T, f Factory) {
+	t.Helper()
+
+	var seen *dflhttp.ReqError
+
+	r, h := f.New(dflhttp.WithErrorWriter(func(w http.ResponseWriter, _ *http.Request, err error) {
+		errors.As(err, &seen)
+
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+
+	r.Handle(http.MethodGet, "/n/{n}",
+		func(_ context.Context, _ *intPathReq) (*string, error) {
+			return new("ok"), nil
+		})
+
+	do(h, http.MethodGet, "/n/notanumber", nil, nil)
+
+	if seen == nil || seen.Code != "invalid_path_param" {
+		t.Errorf("writer saw %+v, want the parser's invalid_path_param ReqError", seen)
+	}
+}
+
+type sliceReq struct {
+	Tags []string `path:"tags"`
+}
+
+// groupInheritsConfig: a Group carries the parent's request parser and
+// error writer (the coercer is covered by the other tests), so routes
+// registered on a group behave exactly like routes on the parent.
+func groupInheritsConfig(t *testing.T, f Factory) {
+	t.Helper()
+
+	parser := &dflhttp.RequestParser{
+		Setters: map[reflect.Type]dflhttp.SetterFunc{
+			reflect.TypeFor[[]string](): func(dst reflect.Value, raw string) error {
+				dst.Set(reflect.ValueOf(strings.Split(raw, ",")))
+
+				return nil
+			},
+		},
+	}
+
+	r, h := f.New(
+		dflhttp.WithRequestParser(parser),
+		dflhttp.WithErrorWriter(func(w http.ResponseWriter, _ *http.Request, _ error) {
+			w.WriteHeader(http.StatusTeapot)
+		}),
+	)
+
+	api := r.Group("/api")
+
+	// A Req type only the custom parser can bind: registration panics here
+	// if the group dropped the parent's parser.
+	var captured []string
+
+	api.Handle(http.MethodGet, "/tags/{tags}",
+		func(_ context.Context, req *sliceReq) (*string, error) {
+			captured = req.Tags
+
+			return new("ok"), nil
+		})
+
+	api.Handle(http.MethodGet, "/boom",
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			return nil, errors.New("boom")
+		})
+
+	rec := do(h, http.MethodGet, "/api/tags/a,b", nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (group must inherit the request parser)", rec.Code)
+	}
+
+	if !slices.Equal(captured, []string{"a", "b"}) {
+		t.Errorf("tags = %v, want [a b]", captured)
+	}
+
+	if rec := do(h, http.MethodGet, "/api/boom", nil, nil); rec.Code != http.StatusTeapot {
+		t.Errorf("status = %d, want 418 (group must inherit the error writer)", rec.Code)
 	}
 }
 

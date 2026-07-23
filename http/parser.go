@@ -21,9 +21,9 @@ type SetterFunc func(dst reflect.Value, raw string) error
 // single parser handles every handler shape in the router; routers that
 // don't override use DefaultRequestParser. It binds fields by struct tag:
 //
-//	`path:"name"`  — pulled from r.PathValue(name)
-//	`query:"name"` — pulled from r.URL.Query().Get(name)
-//	`json:"name"`  — pulled from the JSON request body
+//	`path:"name"`  from r.PathValue(name)
+//	`query:"name"` from r.URL.Query().Get(name)
+//	`json:"name"`  from the JSON request body
 //
 // Per-Req binding plans are cached, so the reflect cost is paid once per
 // (type, parser) pair.
@@ -215,17 +215,21 @@ func (b *binder) bind(p *RequestParser, r *http.Request, dst any) error {
 		}
 	}
 
-	for _, q := range b.queries {
-		val := r.URL.Query().Get(q.key)
-		if val == "" {
-			continue
-		}
+	if len(b.queries) > 0 {
+		query := r.URL.Query()
 
-		if err := q.setter(v.FieldByIndex(q.fieldIdx), val); err != nil {
-			return New(http.StatusBadRequest, "invalid_query_param", M{
-				"param": q.key,
-				"error": err.Error(),
-			})
+		for _, q := range b.queries {
+			val := query.Get(q.key)
+			if val == "" {
+				continue
+			}
+
+			if err := q.setter(v.FieldByIndex(q.fieldIdx), val); err != nil {
+				return New(http.StatusBadRequest, "invalid_query_param", M{
+					"param": q.key,
+					"error": err.Error(),
+				})
+			}
 		}
 	}
 
