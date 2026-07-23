@@ -1,7 +1,25 @@
 version: "3"
 
+vars:
+  # Every Go module in the repo. `./...` only covers the module it runs in,
+  # so anything repo-wide loops over these.
+  MODULES: ". events/aws events/gcp events/otel"
+
 tasks:
-  lint:
-    desc: Run golangci-lint against all packages
+  test:
+    desc: Run go test for every module
     cmds:
-      - golangci-lint run ./...
+      - |
+        set -e
+        for dir in {{.MODULES}}; do
+          (cd "$dir" && go test ./...)
+        done
+
+  lint:
+    desc: Run golangci-lint and staticcheck for every module
+    cmds:
+      - |
+        set -e
+        for dir in {{.MODULES}}; do
+          (cd "$dir" && golangci-lint run ./... && staticcheck ./...)
+        done

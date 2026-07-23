@@ -7,7 +7,6 @@ linters:
     - containedctx
     - contextcheck
     - errcheck
-    - errcheck
     - errname
     - exptostd
     - goconst
