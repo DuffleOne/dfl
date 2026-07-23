@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"sync"
 
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub/v2"
 
 	"github.com/duffleone/dfl/events"
 )
@@ -29,14 +29,28 @@ const (
 	headersAttr = "headers"
 )
 
+// publishers hands out one Publisher per topic, created on first use. A
+// Publisher holds batching state and goroutines, so both sinks cache them
+// here rather than building one per publish.
+type publishers struct {
+	client *pubsub.Client
+
+	mu      sync.Mutex
+	byTopic map[string]*pubsub.Publisher
+}
+
+func newPublishers(client *pubsub.Client) *publishers {
+	return &publishers{client: client, byTopic: map[string]*pubsub.Publisher{}}
+}
+
 // publish sends env to its topic and blocks until Pub/Sub acks it.
-func publish(ctx context.Context, client *pubsub.Client, env events.Envelope) error {
+func (p *publishers) publish(ctx context.Context, env events.Envelope) error {
 	attrs := map[string]string{eventAttr: env.Name}
 	if h := marshalHeaders(env.Headers); h != "" {
 		attrs[headersAttr] = h
 	}
 
-	result := client.Topic(env.Name).Publish(ctx, &pubsub.Message{
+	result := p.forTopic(env.Name).Publish(ctx, &pubsub.Message{
 		Data:       env.Payload,
 		Attributes: attrs,
 	})
@@ -48,13 +62,27 @@ func publish(ctx context.Context, client *pubsub.Client, env events.Envelope) er
 	return nil
 }
 
+func (p *publishers) forTopic(name string) *pubsub.Publisher {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	pub, ok := p.byTopic[name]
+	if !ok {
+		pub = p.client.Publisher(name)
+		p.byTopic[name] = pub
+	}
+
+	return pub
+}
+
 // PullSink is an events.Sink that publishes to Pub/Sub and receives via a
 // background streaming pull, one receiver per subscribed event. Subscribe
 // records the handlers; Receive starts the pulls and takes the context, so the
 // sink doesn't hold one.
 type PullSink struct {
-	client   *pubsub.Client
-	consumer string
+	client     *pubsub.Client
+	publishers *publishers
+	consumer   string
 
 	mu   sync.Mutex
 	subs map[string]events.HandlerFunc
@@ -66,15 +94,16 @@ var _ events.Sink = (*PullSink)(nil)
 // so event "user.created" pulls from subscription "user.created.<consumer>".
 func NewPullSink(client *pubsub.Client, consumer string) *PullSink {
 	return &PullSink{
-		client:   client,
-		consumer: consumer,
-		subs:     map[string]events.HandlerFunc{},
+		client:     client,
+		publishers: newPublishers(client),
+		consumer:   consumer,
+		subs:       map[string]events.HandlerFunc{},
 	}
 }
 
 // Publish sends env to the event's topic and blocks on the ack.
 func (s *PullSink) Publish(ctx context.Context, env events.Envelope) error {
-	return publish(ctx, s.client, env)
+	return s.publishers.publish(ctx, env)
 }
 
 // Subscribe records a handler for the event. Receive starts the actual pull.
@@ -97,13 +126,9 @@ func (s *PullSink) Receive(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	for name, deliver := range subs {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			s.receive(ctx, name, deliver)
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -112,7 +137,7 @@ func (s *PullSink) Receive(ctx context.Context) error {
 }
 
 func (s *PullSink) receive(ctx context.Context, name string, deliver events.HandlerFunc) {
-	sub := s.client.Subscription(name + "." + s.consumer)
+	sub := s.client.Subscriber(name + "." + s.consumer)
 
 	err := sub.Receive(ctx, func(ctx context.Context, m *pubsub.Message) {
 		env := events.Envelope{
@@ -141,7 +166,7 @@ func (s *PullSink) receive(ctx context.Context, name string, deliver events.Hand
 type PushSink struct {
 	*events.Dispatcher
 
-	client *pubsub.Client
+	publishers *publishers
 }
 
 var (
@@ -152,12 +177,12 @@ var (
 // NewPushSink builds a push sink that publishes to Pub/Sub and accepts push
 // deliveries over HTTP.
 func NewPushSink(client *pubsub.Client) *PushSink {
-	return &PushSink{Dispatcher: events.NewDispatcher(), client: client}
+	return &PushSink{Dispatcher: events.NewDispatcher(), publishers: newPublishers(client)}
 }
 
 // Publish sends env to the event's topic and blocks on the ack.
 func (s *PushSink) Publish(ctx context.Context, env events.Envelope) error {
-	return publish(ctx, s.client, env)
+	return s.publishers.publish(ctx, env)
 }
 
 // pushPayload is the JSON Pub/Sub POSTs to a push endpoint. Data is base64 on

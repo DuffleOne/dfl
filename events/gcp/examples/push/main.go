@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"os"
 
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub/v2"
 
 	"github.com/duffleone/dfl/events"
 	gcppubsub "github.com/duffleone/dfl/events/gcp/pubsub"
