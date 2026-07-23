@@ -1,16 +1,38 @@
 # dfl
 
-Personal monorepo of small Go libraries I reuse across the companies and places I work.
+Personal monorepo of small Go libraries I reuse across the companies and
+places I work.
 
-## Packages
+Three libraries, one shape. Each wraps a thin, typed layer around a thing Go
+already does well (`net/http`, message transports, `pgx`), keeps the wire
+plumbing out of application code, and hides its backend behind a small
+interface so implementations swap without the application noticing:
 
-### [`http`](./http)
+| Package                            | What it is                                        | Backend interface |
+| ---------------------------------- | ------------------------------------------------- | ----------------- |
+| [`http`](./http)                   | Typed HTTP handlers with structured errors        | `Mux`             |
+| [`http/oops`](./http/oops)         | Error coercer for `samber/oops`                   |                   |
+| [`events`](./events)               | Typed event bus, async in-process or over HTTP    | `Sink`            |
+| [`events/aws`](./events/aws)       | SQS, SNS, and EventBridge transports (own module) |                   |
+| [`events/gcp`](./events/gcp)       | Pub/Sub transport (own module)                    |                   |
+| [`events/otel`](./events/otel)     | OpenTelemetry tracing plugin (own module)         |                   |
+| [`db/pgxdb`](./db/pgxdb)           | `pgx/v5` wrapper: tx shapes, generic scanning     | `Querier`         |
 
-Typed HTTP handlers on top of `net/http`, with structured errors and a pluggable mux.
+Every package README is a full guide; this page is the tour.
+[docs/building-a-service.md](./docs/building-a-service.md) walks through
+wiring all three into one service.
 
-A handler has shape `func(context.Context, *Req) (*Resp, error)`. The router binds `Req` from path, query, and JSON body via struct tags, calls the handler, then JSON-encodes `Resp` on success or runs the error through a `Coercer` on failure. `Req` and `Resp` are pointer-to-struct so handlers return `(nil, err)` cleanly on the error path. `dflhttp.Empty` (and `*dflhttp.Empty`) covers no-input and no-output routes; an `Empty` resp produces `204 No Content`.
+Needs Go 1.27 or later: the typed APIs are generic methods, added in that
+release. The cloud transports are separate modules so the core has no SDK
+dependencies; `go get` them only where they're used.
 
-The `Router` wraps any mux that satisfies `MethodFunc(method, pattern, handler)` (chi-style) or `HandleFunc(pattern, handler)` (stdlib `"METHOD /path"`-style). Both `*http.ServeMux` and `*chi.Mux` work directly.
+## http
+
+A handler has shape `func(context.Context, *Req) (*Resp, error)`. The router
+binds `Req` from path, query, and JSON body via struct tags, calls the
+handler, then JSON-encodes `Resp` on success or writes a structured error on
+failure. `Req` and `Resp` are pointer-to-struct so the error path is just
+`(nil, err)`; `*dflhttp.Empty` covers no-input and no-output routes (a 204).
 
 ```go
 type GetUserReq struct {
@@ -37,17 +59,26 @@ func main() {
 }
 ```
 
-Working examples in [`http/examples/std`](./http/examples/std) and [`http/examples/chi`](./http/examples/chi). [`http/examples/api/widgets.go`](./http/examples/api/widgets.go) shows multi-source request validation (path + query + body) returning a single 400 with field-level errors.
+The `Router` wraps any mux with chi-style `MethodFunc` or stdlib-style
+`HandleFunc` registration; both `*http.ServeMux` and `*chi.Mux` work
+directly, verified by one conformance suite.
 
-Optional `Coercer` for `samber/oops` errors lives at [`http/oops`](./http/oops).
+Errors are layered: handlers return `*ReqError` (`{code, status_code,
+meta}` on the wire), a pluggable `Coercer` maps your own error hierarchy
+onto that shape, and `WithErrorWriter` hands the whole error response over
+when the wire shape itself is yours rather than dfl's. The
+[http guide](./http/README.md) covers all three layers;
+[`http/examples/errorwriter`](./http/examples/errorwriter) is a service
+emitting its own error envelope verbatim while dfl still does the routing.
 
-### [`events`](./events)
+## events
 
-A typed event bus, the producer/consumer twin of `http`. You define an event struct, register handlers for it, and emit it; the bus encodes, validates, fans out, and coerces failures into one structured error, so there's no manual marshalling or error plumbing.
-
-An event names itself with `EventName() string`. There are two ways to handle one, both taking the same `func(context.Context, E) error`: `bus.On(handler)` subscribes in-process (delivery is async, and handler errors go to a bus error handler), and `bus.RegisterEndpoint(router, handler)` exposes it over HTTP as `POST /events/{name}` that decodes the event from the JSON body, bridging into the `http` package. `bus.Emit(ctx, e)` publishes and blocks only until the event is committed for delivery.
-
-A `Bus` wraps a pluggable `Sink` the way the `Router` wraps a `Mux`: the in-memory sink ships in the package, and external transports (NATS, a `pgxdb` outbox, a webhook fan-out) drop in behind the same interface. An optional `Validate() error` on the event runs on both publish and delivery, and the validator is pluggable.
+The producer/consumer twin of `http`. An event names itself with
+`EventName()`; handlers are `func(context.Context, E) error`. `bus.On`
+subscribes in-process (async, errors to the bus error handler),
+`bus.RegisterEndpoint` serves the same handler as `POST /events/{name}`
+through the http router, and `bus.Emit` publishes, returning once the event
+is committed for delivery.
 
 ```go
 type UserCreated struct {
@@ -57,24 +88,56 @@ type UserCreated struct {
 
 func (UserCreated) EventName() string { return "user.created" }
 
-func welcome(ctx context.Context, e UserCreated) error {
-    log.Printf("welcome %s", e.Email)
-    return nil
-}
-
 func main() {
     bus := events.NewBus(events.NewMemSink())
-    bus.On(welcome)
+    bus.On(func(ctx context.Context, e UserCreated) error {
+        log.Printf("welcome %s", e.Email)
+        return nil
+    })
     _ = bus.Emit(context.Background(), UserCreated{ID: "1", Email: "a@b.com"})
 }
 ```
 
-Ready-made cloud transports live in their own modules so the core stays dependency-free: [`events/aws`](./events/aws) (SQS, SNS, EventBridge) and [`events/gcp`](./events/gcp) (Pub/Sub), each with both pull (a receiver loop) and push (an `http.Handler` for the transport's HTTP delivery) where the transport supports it. Plain in-process examples are in [`events/examples`](./events/examples).
+The bus validates events on both publish and delivery, and a `Plugin` can
+wrap both sides of the trip, carrying metadata in envelope headers that the
+cloud transports map to native message attributes. That's how
+[`events/otel`](./events/otel) flows one trace from emitter to handler:
+`events.NewBus(sink, events.WithPlugins(otel.New()))`. Swap `MemSink` for
+[`events/aws`](./events/aws) or [`events/gcp`](./events/gcp) and the
+application code doesn't change. The [events guide](./events/README.md)
+covers the model, plugins, and writing a sink of your own.
 
-A `Plugin` wraps both sides of an event's life, the publish and the deliver, so cross-cutting concerns inject cleanly. The event carries a `Headers` bag that a plugin writes on publish and reads on deliver, and the cloud adapters map it to native message attributes. [`events/otel`](./events/otel) uses this for OpenTelemetry trace propagation: `events.NewBus(sink, events.WithPlugins(otel.New()))` injects trace context on emit and continues the trace in a consumer span on delivery.
+## db/pgxdb
 
-### [`db/pgxdb`](./db/pgxdb)
+Transaction shapes (`Tx`, `TxRead`, `TxSerializable` with retry), generic
+`Get`/`Scalar`/`Select` scanners, and an escape hatch to `database/sql`. The
+`Querier` interface is satisfied by both the pool and `pgx.Tx`, and the
+`TxCtx` family carries the running transaction on the context, so a
+repository method written once against `GetQuerier(ctx, fallback)` joins the
+ambient transaction when there is one and uses the pool when there isn't:
 
-Wrapper around `jackc/pgx/v5`. Transaction shapes (read-only, read-committed, serializable with retry), generic `Get`/`Scalar`/`Select` scanners, and an escape hatch to `*database/sql`. The `Querier` interface is satisfied by both the pool and `pgx.Tx`, so the same helper functions work inside or outside a transaction.
+```go
+db.TxCtx(ctx, func(ctx context.Context) error {
+    if _, err := repo.Create(ctx, "Alice", "alice@example.com"); err != nil {
+        return err
+    }
+    _, err := repo.Create(ctx, "Bob", "bob@example.com")
+    return err // one transaction, or neither insert
+})
+```
 
-`TxCtx`, `TxReadCtx`, and `TxSerializableCtx` attach the running transaction to the context; helpers can then pull it back out with `GetQuerier(ctx, fallback)`, so a repository function takes a `Querier` once and quietly upgrades to the running tx when called inside a `TxCtx` block. Working examples in [`db/pgxdb/examples/basic`](./db/pgxdb/examples/basic), [`db/pgxdb/examples/tx`](./db/pgxdb/examples/tx), and [`db/pgxdb/examples/serializable`](./db/pgxdb/examples/serializable).
+The [pgxdb guide](./db/pgxdb/README.md) covers scanning, transaction
+semantics, and the repository pattern.
+
+## Development
+
+```
+task test   # go test for every module
+task lint   # golangci-lint + staticcheck for every module
+```
+
+CI runs the same via [.github/workflows/ci.yml](./.github/workflows/ci.yml).
+The repo is four Go modules (root plus the three cloud transports), and both
+router and bus ship conformance suites (`http/internal/routertest`,
+`events/internal/bustest`) that run the full behaviour matrix against every
+backend, so a new mux or sink starts from a passing spec.

@@ -19,11 +19,7 @@ import (
 )
 
 func main() {
-	r := dflhttp.NewRouter(
-		chi.NewMux(),
-		dflhttp.WithCoercer(oops.Coerce),
-		dflhttp.WithRequestParser(dflhttp.DefaultRequestParser),
-	)
+	r := dflhttp.NewRouter(chi.NewMux(), dflhttp.WithCoercer(oops.Coerce))
 
 	rg := r.Group("/api")
 
