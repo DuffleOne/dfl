@@ -32,6 +32,4 @@ Runnable example with a stdout exporter in [`examples/trace`](./examples/trace).
 
 ## Notes
 
-- `go.sum` is not checked in. The core targets a Go with generic methods the
-  current toolchain doesn't parse, so `go mod tidy` can't run yet. Once the core
-  builds, run `go mod tidy` here to populate `go.sum`.
+- Needs Go 1.27 or later: the core uses generic methods, added in that release.

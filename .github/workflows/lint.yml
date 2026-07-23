@@ -12,11 +12,21 @@ jobs:
   golangci:
     name: golangci-lint
     runs-on: ubuntu-latest
+    env:
+      # go.mod's "go 1.27" makes the RC toolchain try to fetch the unreleased
+      # go1.27.0 and fail. Drop this once 1.27.0 is out.
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          # Pinned to the RC rather than go-version-file: go.mod, because
+          # go.mod says "go 1.27" and setup-go reads that as a stable 1.27.x
+          # that doesn't exist yet. Switch back to go-version-file when
+          # 1.27.0 ships.
+          go-version: "1.27.0-rc.2"
       - uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.11.4
+          # v2.11.4 can't read Go 1.27 export data, which went to version 4 to
+          # carry generic methods. v2.12.2 can.
+          version: v2.12.2

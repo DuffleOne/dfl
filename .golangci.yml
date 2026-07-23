@@ -30,7 +30,11 @@ linters:
     - tagliatelle
     - thelper
     - unconvert
-    - unparam
+    # - unparam # panics on our generic methods: x/tools go/ssa RuntimeTypes
+    #   walks method sets and trips over an uninstantiated type param
+    #   (golang/go#80139). Fixed upstream, but golangci-lint v2.12.2 still
+    #   vendors x/tools v0.44.0, which predates the fix. Re-enable once a
+    #   release picks up a newer x/tools.
     - unused
     - wastedassign
     - whitespace
