@@ -21,8 +21,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/duffleone/dfl/http/examples/api"
 	dflhttp "github.com/duffleone/dfl/http"
+	"github.com/duffleone/dfl/http/examples/api"
 )
 
 func main() {

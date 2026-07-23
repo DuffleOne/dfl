@@ -20,6 +20,7 @@ func TestInProcess(t *testing.T) {
 	wg.Add(2)
 
 	var gotEmail, gotID string
+
 	bus.On(func(_ context.Context, e UserCreated) error { gotEmail = e.Email; wg.Done(); return nil })
 	bus.On(func(_ context.Context, e UserCreated) error { gotID = e.ID; wg.Done(); return nil })
 

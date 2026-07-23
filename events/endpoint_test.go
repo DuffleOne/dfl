@@ -23,8 +23,10 @@ func TestRegisterEndpointSuccess(t *testing.T) {
 	wg.Add(1)
 
 	var got evtUser
+
 	bus.RegisterEndpoint(r, func(_ context.Context, e evtUser) error {
 		got = e
+
 		wg.Done()
 
 		return nil

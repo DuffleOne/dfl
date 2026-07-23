@@ -33,8 +33,10 @@ func TestMemSinkDetachedContext(t *testing.T) {
 	wg.Add(1)
 
 	var handlerErr error
+
 	bus.On(func(ctx context.Context, _ evtPing) error {
 		handlerErr = ctx.Err()
+
 		wg.Done()
 
 		return nil

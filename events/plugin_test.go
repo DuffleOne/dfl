@@ -29,6 +29,7 @@ func TestPluginPropagatesHeader(t *testing.T) {
 		Deliver: func(next events.HandlerFunc) events.HandlerFunc {
 			return func(ctx context.Context, env events.Envelope) error {
 				seen = env.Headers["trace"]
+
 				wg.Done()
 
 				return next(ctx, env)

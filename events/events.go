@@ -24,6 +24,7 @@ import (
 	"context"
 	"log/slog"
 	"reflect"
+	"slices"
 )
 
 // M is a key/value bag used for structured metadata, notably on EventError.
@@ -342,16 +343,16 @@ func combineChain(group, perRoute []Middleware) []Middleware {
 }
 
 func applyMiddleware(h HandlerFunc, mw []Middleware) HandlerFunc {
-	for i := len(mw) - 1; i >= 0; i-- {
-		h = mw[i](h)
+	for _, v := range slices.Backward(mw) {
+		h = v(h)
 	}
 
 	return h
 }
 
 func applyPublish(p PublishFunc, mw []PublishMiddleware) PublishFunc {
-	for i := len(mw) - 1; i >= 0; i-- {
-		p = mw[i](p)
+	for _, v := range slices.Backward(mw) {
+		p = v(p)
 	}
 
 	return p

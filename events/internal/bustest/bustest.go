@@ -78,6 +78,7 @@ func (e needsEmail) Validate() error {
 func captureError(wg *sync.WaitGroup, dst **events.EventError) events.Option {
 	return events.WithErrorHandler(func(_ context.Context, _ events.Envelope, err *events.EventError) {
 		*dst = err
+
 		wg.Done()
 	})
 }
@@ -85,14 +86,18 @@ func captureError(wg *sync.WaitGroup, dst **events.EventError) events.Option {
 // --- subtests ---
 
 func deliversToSubscriber(t *testing.T, f Factory) {
+	t.Helper()
+
 	bus, _ := f.New()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	var got ping
+
 	bus.On(func(_ context.Context, e ping) error {
 		got = e
+
 		wg.Done()
 
 		return nil
@@ -110,6 +115,8 @@ func deliversToSubscriber(t *testing.T, f Factory) {
 }
 
 func fanOutRunsEvery(t *testing.T, f Factory) {
+	t.Helper()
+
 	bus, _ := f.New()
 
 	var wg sync.WaitGroup
@@ -126,6 +133,8 @@ func fanOutRunsEvery(t *testing.T, f Factory) {
 }
 
 func emitReturnsNilOnCleanPublish(t *testing.T, f Factory) {
+	t.Helper()
+
 	bus, _ := f.New()
 
 	var wg sync.WaitGroup
@@ -141,6 +150,8 @@ func emitReturnsNilOnCleanPublish(t *testing.T, f Factory) {
 }
 
 func unknownEventIsNoop(t *testing.T, f Factory) {
+	t.Helper()
+
 	bus, _ := f.New()
 
 	if err := bus.Emit(context.Background(), ping{Seq: 1}); err != nil {
@@ -149,9 +160,12 @@ func unknownEventIsNoop(t *testing.T, f Factory) {
 }
 
 func validationRejectsAtEmit(t *testing.T, f Factory) {
+	t.Helper()
+
 	bus, _ := f.New()
 
 	ran := false
+
 	bus.On(func(_ context.Context, _ needsEmail) error { ran = true; return nil })
 
 	err := bus.Emit(context.Background(), needsEmail{Email: ""})
@@ -171,13 +185,17 @@ func validationRejectsAtEmit(t *testing.T, f Factory) {
 }
 
 func validationRejectsAtDeliver(t *testing.T, f Factory) {
+	t.Helper()
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	var got *events.EventError
+
 	bus, sink := f.New(captureError(&wg, &got))
 
 	ran := false
+
 	bus.On(func(_ context.Context, _ needsEmail) error { ran = true; return nil })
 
 	// Inject a raw envelope that bypasses Emit's producer-side validation, as a
@@ -199,13 +217,17 @@ func validationRejectsAtDeliver(t *testing.T, f Factory) {
 }
 
 func decodeFailureReachesErrorHandler(t *testing.T, f Factory) {
+	t.Helper()
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	var got *events.EventError
+
 	bus, sink := f.New(captureError(&wg, &got))
 
 	ran := false
+
 	bus.On(func(_ context.Context, _ ping) error { ran = true; return nil })
 
 	_ = sink.Publish(context.Background(), events.Envelope{
@@ -225,10 +247,13 @@ func decodeFailureReachesErrorHandler(t *testing.T, f Factory) {
 }
 
 func handlerErrorReachesErrorHandler(t *testing.T, f Factory) {
+	t.Helper()
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	var got *events.EventError
+
 	bus, _ := f.New(captureError(&wg, &got))
 
 	bus.On(func(_ context.Context, _ ping) error {
@@ -252,6 +277,8 @@ func handlerErrorReachesErrorHandler(t *testing.T, f Factory) {
 }
 
 func customValidatorHonoured(t *testing.T, f Factory) {
+	t.Helper()
+
 	bus, _ := f.New(events.WithValidator(rejectAll{}))
 
 	if err := bus.Emit(context.Background(), ping{Seq: 1}); err == nil {
@@ -266,10 +293,13 @@ func (rejectAll) Validate(_ events.Event) error {
 }
 
 func customCoercerHonoured(t *testing.T, f Factory) {
+	t.Helper()
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	var got *events.EventError
+
 	bus, _ := f.New(
 		events.WithCoercer(func(error) *events.EventError { return events.New("coerced", nil) }),
 		captureError(&wg, &got),
@@ -291,6 +321,8 @@ func customCoercerHonoured(t *testing.T, f Factory) {
 var errSentinel = events.New("sentinel", nil)
 
 func middlewareComposesInOrder(t *testing.T, f Factory) {
+	t.Helper()
+
 	bus, _ := f.New()
 
 	var wg sync.WaitGroup
@@ -299,6 +331,7 @@ func middlewareComposesInOrder(t *testing.T, f Factory) {
 	// order is appended only from the single delivery goroutine, sequentially,
 	// so no lock is needed; wg.Wait fences the read.
 	var order []string
+
 	tap := func(label string) events.Middleware {
 		return func(next events.HandlerFunc) events.HandlerFunc {
 			return func(ctx context.Context, env events.Envelope) error {
@@ -313,6 +346,7 @@ func middlewareComposesInOrder(t *testing.T, f Factory) {
 
 	bus.On(func(_ context.Context, _ ping) error {
 		order = append(order, "handler")
+
 		wg.Done()
 
 		return nil
@@ -331,10 +365,13 @@ func middlewareComposesInOrder(t *testing.T, f Factory) {
 }
 
 func middlewareShortCircuits(t *testing.T, f Factory) {
+	t.Helper()
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	var got *events.EventError
+
 	bus, _ := f.New(captureError(&wg, &got))
 
 	ran := false

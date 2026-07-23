@@ -20,8 +20,15 @@ jobs:
           # explicitly, so nothing tries to fetch the unreleased go1.27.0.
           # Move both to plain 1.27 when it ships.
           go-version: "1.27.0-rc.2"
-      - uses: golangci/golangci-lint-action@v7
-        with:
-          # v2.11.4 can't read Go 1.27 export data, which went to version 4 to
-          # carry generic methods. v2.12.2 can.
-          version: v2.12.2
+      # Built from source rather than via golangci/golangci-lint-action. The
+      # action downloads a prebuilt binary, and the released binaries are
+      # built with Go 1.26, which refuses to lint a module targeting 1.27:
+      # "the Go language version (go1.26) used to build golangci-lint is
+      # lower than the targeted Go version (1.27)". Building it with the RC
+      # sidesteps that. Go back to the action once they ship a release built
+      # with Go 1.27.
+      #
+      # v2.11.4 also couldn't read Go 1.27 export data (version 4, bumped to
+      # carry generic methods), so this is v2.12.2 regardless.
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+      - run: golangci-lint run ./...

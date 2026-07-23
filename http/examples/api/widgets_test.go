@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/duffleone/dfl/http/examples/api"
 	dflhttp "github.com/duffleone/dfl/http"
+	"github.com/duffleone/dfl/http/examples/api"
 )
 
 // TestCreateWidgetValidationFailure exercises the validation path: a single

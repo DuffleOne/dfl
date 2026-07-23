@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 )
 
 // M is a key/value bag used for structured metadata, notably on ReqError.
@@ -216,8 +217,8 @@ func combineChain(group, perRoute []Middleware) []Middleware {
 }
 
 func applyMiddleware(h HandlerFunc, mw []Middleware) HandlerFunc {
-	for i := len(mw) - 1; i >= 0; i-- {
-		h = mw[i](h)
+	for _, v := range slices.Backward(mw) {
+		h = v(h)
 	}
 
 	return h

@@ -64,6 +64,7 @@ func (b *Bus) asReqError(err error, name string) error {
 	eventErr = eventErr.withEvent(name)
 
 	status := http.StatusInternalServerError
+
 	switch eventErr.Code {
 	case "validation_failed", "invalid", "decode_failed":
 		status = http.StatusBadRequest

@@ -12,6 +12,7 @@ func TestDispatcherRunsAllHandlers(t *testing.T) {
 	d := events.NewDispatcher()
 
 	var a, b bool
+
 	d.Subscribe("test.ping", func(_ context.Context, _ events.Envelope) error { a = true; return nil })
 	d.Subscribe("test.ping", func(_ context.Context, _ events.Envelope) error { b = true; return nil })
 
@@ -29,6 +30,7 @@ func TestDispatcherJoinsErrors(t *testing.T) {
 	d := events.NewDispatcher()
 
 	boom := errors.New("boom")
+
 	d.Subscribe("test.ping", func(_ context.Context, _ events.Envelope) error { return nil })
 	d.Subscribe("test.ping", func(_ context.Context, _ events.Envelope) error { return boom })
 
