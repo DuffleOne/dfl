@@ -25,13 +25,5 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 )
 
-require (
-	github.com/go-logr/logr v1.4.2 // indirect
-	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
-	go.opentelemetry.io/otel/metric v1.32.0 // indirect
-	golang.org/x/sys v0.27.0 // indirect
-)
-
 // The core lives in the same repo and isn't published with these features yet.
 replace github.com/duffleone/dfl => ../..
