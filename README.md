@@ -12,6 +12,7 @@ interface so implementations swap without the application noticing:
 | ---------------------------------- | ------------------------------------------------- | ----------------- |
 | [`http`](./http)                   | Typed HTTP handlers with structured errors        | `Mux`             |
 | [`http/oops`](./http/oops)         | Error coercer for `samber/oops`                   |                   |
+| [`http/version`](./http/version)   | Versioned endpoints: a handler per API version    |                   |
 | [`events`](./events)               | Typed event bus, async in-process or over HTTP    | `Sink`            |
 | [`events/aws`](./events/aws)       | SQS, SNS, and EventBridge transports (own module) |                   |
 | [`events/gcp`](./events/gcp)       | Pub/Sub transport (own module)                    |                   |
@@ -70,6 +71,13 @@ when the wire shape itself is yours rather than dfl's. The
 [http guide](./http/README.md) covers all three layers;
 [`http/examples/errorwriter`](./http/examples/errorwriter) is a service
 emitting its own error envelope verbatim while dfl still does the routing.
+
+[`http/version`](./http/version) versions endpoints one route at a time:
+register a handler variant per date or version number, say where the
+version travels (a header, a query parameter, or your own extractor), and
+each request runs the newest variant not newer than its pin. The
+[version guide](./http/version/README.md) covers schemes, sources, and
+matching.
 
 ## events
 

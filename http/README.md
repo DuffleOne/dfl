@@ -261,6 +261,31 @@ func handleCreate(_ context.Context, req *CreateWidgetReq) (*Widget, error) {
 [`examples/api/widgets.go`](./examples/api/widgets.go) shows the full version
 validating path, query, and body together.
 
+## Versioning
+
+Endpoints that need to change shape without breaking pinned clients get a
+handler variant per version through [`http/version`](./version): a
+`Scheme` says what versions are (dates, `v1`/`v2`, anything you can parse
+and compare), `Source`s say where the version travels on the request (a
+header, a query parameter, your own function), and each request runs the
+newest variant not newer than its pin.
+
+```go
+api := version.NewResolver(version.Dates(), version.Header("X-API-Version"))
+
+users := version.NewEndpoint(api)
+version.Handle(users, "2024-01-02", listUsersV1)
+version.Handle(users, "2024-06-01", listUsersV2)
+
+r.HandleFunc(http.MethodGet, "/users", users.Serve)
+```
+
+It's built on `Adapt`, the exported half of `Handle`'s typed plumbing:
+`Adapt` turns a typed handler into a `HandlerFunc` without registering it,
+for any dispatch decision that isn't a route. The
+[version guide](./version/README.md) covers schemes, sources, matching
+rules, and errors.
+
 ## Testing handlers
 
 Typed handlers are plain functions: call them. For routing-level behaviour,
