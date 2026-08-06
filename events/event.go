@@ -2,16 +2,11 @@ package events
 
 import "encoding/json"
 
-// Event is the one interface every event type must satisfy. EventName is the
-// topic the event is published and subscribed under; it lives with the type so
-// On, Emit, and RegisterEndpoint all derive it without the name being repeated
-// at the call site.
-//
-// Events are value types by convention (the opposite of the http package's
-// pointer-Req rule). Handlers return only an error, so there's no (nil, err)
-// ergonomic to win from pointers, and a value type means EventName is callable
-// on a zero value, which the bus relies on to derive the name at registration.
-// Put EventName (and any Validate/URLSafeName) on a value receiver.
+// Event is the one interface every event type must satisfy: EventName is
+// the topic it's published and subscribed under, derived by On, Emit, and
+// RegisterEndpoint without being repeated at call sites. Events are value
+// types by convention, with EventName (and any Validate or URLSafeName) on
+// a value receiver, so the bus can call it on a zero value at registration.
 type Event interface {
 	EventName() string
 }
@@ -31,17 +26,12 @@ type URLSafeNamer interface {
 	URLSafeName() string
 }
 
-// Envelope is the wire form of an event: a name, an encoded payload, and a bag
-// of string headers. It's the events analog of *http.Request, the thing a Sink
-// moves around. The bus produces it in Emit (via the Codec) and consumes it in
-// the deliver closure.
-//
-// Headers is the carrier for cross-cutting metadata that travels with the
-// event, notably trace context: a publish-side Plugin injects into it (e.g.
-// W3C traceparent) and a deliver-side Plugin extracts from it. Sinks are
-// responsible for carrying Headers over their transport; MemSink passes the
-// whole envelope through, and the cloud adapters map them to native message
-// attributes.
+// Envelope is the wire form of an event: a name, an encoded payload, and
+// a bag of string headers, the events analog of *http.Request. Headers
+// carry cross-cutting metadata that travels with the event, notably trace
+// context: a publish-side Plugin injects, a deliver-side Plugin extracts,
+// and each Sink carries them over its transport (the cloud adapters map
+// them to native message attributes).
 type Envelope struct {
 	Name    string            `json:"name"`
 	Payload json.RawMessage   `json:"payload"`

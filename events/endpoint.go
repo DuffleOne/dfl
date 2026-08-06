@@ -3,26 +3,17 @@ package events
 import (
 	"context"
 	"net/http"
-	"slices"
 	"strings"
 
 	dflhttp "github.com/duffleone/dfl/http"
 )
 
-// RegisterEndpoint exposes a handler for event E over HTTP, the synchronous twin
-// of On. It registers POST /events/{segment} on rg, where segment comes from
-// E's URLSafeName if it implements URLSafeNamer, or from sanitising EventName
-// otherwise. The route is registered at boot, like any http route.
-//
-// The http router binds the request body into E via the event's json tags (the
-// same wire form as the default JSON codec), then the endpoint validates the
-// event with the bus validator, calls handler, and returns 204 No Content. Any
-// error is projected onto a *dflhttp.ReqError so the http router serialises it:
-// validation and decode failures become 400, everything else 500.
-//
-// Unlike On, this path is fully synchronous: the POST blocks until handler
-// returns and the error (if any) is the HTTP response. It does not touch the
-// Sink, so it works whether or not anything is subscribed in-process.
+// RegisterEndpoint exposes a handler for E over HTTP, the synchronous twin
+// of On: POST /events/{segment}, where segment is E's URLSafeName or its
+// sanitised EventName. The router binds the JSON body into E (the default
+// codec's wire form), the endpoint validates it, and handler's error is
+// the HTTP response: validation and decode failures 400, the rest 500. It
+// never touches the Sink, so nothing need be subscribed in-process.
 func (b *Bus) RegisterEndpoint[E Event](
 	rg *dflhttp.Router,
 	handler func(context.Context, E) error,
@@ -65,13 +56,14 @@ func (b *Bus) asReqError(err error, name string) error {
 	eventErr = eventErr.withEvent(name)
 	reqErr := dflhttp.New(eventErr.Code, dflhttp.M(eventErr.Meta), eventErr)
 
-	// A caller that sent us something unusable takes ReqError's 400 default.
-	// Anything else is the bus failing on our side, so it opts out.
-	if slices.Contains([]string{"validation_failed", "invalid", "decode_failed"}, eventErr.Code) {
+	// Bad input from the caller keeps ReqError's 400 default; anything else
+	// is the bus failing on our side, so it opts out.
+	switch eventErr.Code {
+	case "validation_failed", "invalid", "decode_failed":
 		return reqErr
+	default:
+		return reqErr.WithStatus(http.StatusInternalServerError)
 	}
-
-	return reqErr.WithStatus(http.StatusInternalServerError)
 }
 
 // pathSafe turns an event name into a URL path segment: lowercase, keeping

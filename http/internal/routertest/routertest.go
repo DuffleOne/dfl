@@ -1,10 +1,8 @@
 // Package routertest exports a conformance suite that every dflhttp.Router
-// backend must pass. Each backend's *_test.go calls Run with a Factory that
-// builds an instance of that backend; the suite then exercises the
-// observable behaviour we care about (binding, errors, groups, middleware).
-//
-// Tests live here and not in each backend so both std and chi (and any
-// future backend) are verified by literally the same code.
+// backend must pass. Each backend's *_test.go calls Run with a Factory
+// building an instance of that backend; the suite covers the observable
+// behaviour (binding, errors, groups, middleware). Tests live here rather
+// than per backend so std and chi are verified by literally the same code.
 package routertest
 
 import (

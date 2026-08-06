@@ -1,6 +1,5 @@
-// Command trace shows OpenTelemetry trace propagation through the events bus,
-// using a stdout exporter so you can see the producer span ("user.created
-// publish") and the consumer span ("user.created process") share a trace id.
+// Command trace shows trace propagation through the bus with a stdout
+// exporter: the publish and process spans share one trace id.
 //
 // Run:
 //

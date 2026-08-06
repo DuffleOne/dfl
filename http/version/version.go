@@ -1,51 +1,9 @@
 // Package version dispatches one route to different handlers by API
-// version, so an endpoint can change shape over time without breaking the
-// clients already pinned to its old behaviour.
-//
-// Three pieces plug together:
-//
-//   - A Scheme gives versions their type and their order: Dates for
-//     "2024-06-01" pins, Sequential for "v1"/"v2", Ordered for any
-//     cmp.Ordered type with a parse function, or your own implementation.
-//   - Sources say where the version travels on a request: Header, Query,
-//     PathValue, a trailing Default pin, or any func(r) (string, bool),
-//     which covers app build numbers, JWT claims, per-client pins, and
-//     whatever else.
-//   - An Endpoint holds one handler per version and picks the variant for
-//     the resolved version before the underlying function runs.
-//
-// A Resolver pairs a Scheme with Sources once per API; every Endpoint
-// shares it. Variants are the same typed handlers the Router takes, each
-// version free to have its own Req and Resp shapes, and Endpoint.Serve is
-// a dflhttp.HandlerFunc, so a versioned endpoint registers on a Router
-// like any raw route:
-//
-//	api := version.NewResolver(version.Dates(),
-//	    version.Header("X-API-Version"),
-//	)
-//
-//	users := version.NewEndpoint(api)
-//	version.Handle(users, "2024-01-02", listUsersV1)
-//	version.Handle(users, "2024-06-01", listUsersV2)
-//
-//	r.HandleFunc(http.MethodGet, "/users", users.Serve)
-//
-// Dispatch defaults to MatchCompatible: a request pinned to "2024-03-15"
-// is served by the "2024-01-02" variant, the newest one not newer than
-// the pin. Endpoints therefore version independently; register a new
-// variant only on the endpoints whose behaviour actually changed.
-//
-// WithMatch(MatchExact) runs the stricter regime instead, where a pin
-// must name a declared variant outright, and Resolver.AllowLatest adds an
-// opt-in latest pseudo-version served by an endpoint's newest variant.
-// Together they reproduce the fully explicit model: every version an
-// endpoint exists at is declared, nothing carries between versions, and
-// "latest" is the one moving pointer.
-//
-// Resolver.AllowPreview layers an experimental overlay on top: a preview
-// pin is served by an endpoint's preview variant when one is declared,
-// and by the newest variant otherwise. Resolver.StatusHeader names a
-// response header reporting the channel and version that answered.
+// version, so an endpoint can change shape without breaking pinned
+// clients. A Scheme types and orders versions (Dates, Sequential,
+// Ordered), Sources say where the version travels (Header, Query,
+// PathValue, Default), and an Endpoint holds a handler per version.
+// Stripe-style inheritance by default; the README covers the rest.
 package version
 
 import (
@@ -56,13 +14,10 @@ import (
 	"time"
 )
 
-// Scheme defines a version format: how raw strings from the wire parse
-// into V, how two V values order, and how a V renders back into a string
-// for error metadata and introspection.
-//
-// Implementations must be comparison-consistent: Compare is called with
-// values produced by Parse, and a value must compare equal to itself
-// after a Parse/Format round trip.
+// Scheme defines a version format: how raw strings parse into V, how two
+// V values order, and how a V renders back for error metadata. It must be
+// comparison-consistent: a value compares equal to itself after a
+// Parse/Format round trip.
 type Scheme[V any] interface {
 	// Parse turns a raw wire value into a version. The error is surfaced
 	// to the client (inside a 400 version_invalid response), so it should
@@ -143,15 +98,10 @@ func (seqScheme) Format(v int) string {
 }
 
 // Ordered builds a Scheme for any ordered type from just a parse
-// function: cmp.Compare orders the values and fmt.Sprint formats them.
-// This is the shortcut for versions that are naturally an int, float, or
-// string, like an app build number:
-//
-//	version.Ordered(strconv.Atoi)
-//
-// Anything needing its own ordering or rendering (semver, say, where
-// "v10" must sort above "v9" component-wise) implements Scheme directly
-// instead.
+// function, version.Ordered(strconv.Atoi) say: cmp.Compare orders values
+// and fmt.Sprint formats them. The shortcut for versions that are
+// naturally an int, float, or string, like an app build number. Anything
+// needing its own ordering or rendering (semver) implements Scheme.
 func Ordered[V cmp.Ordered](parse func(raw string) (V, error)) Scheme[V] {
 	return orderedScheme[V]{parse: parse}
 }

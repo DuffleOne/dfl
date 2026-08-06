@@ -56,14 +56,11 @@ type variant[V any] struct {
 	handle  dflhttp.HandlerFunc
 }
 
-// Endpoint is one logical route with a handler per version. Register
-// variants with Handle or HandleFunc, then register Serve on the Router;
-// each request resolves its version through the shared Resolver and runs
-// the variant the Match rule picks.
-//
-// Like the Router, an Endpoint is set up once at startup: register every
-// variant before serving traffic, registration is not safe to run
-// concurrently with Serve.
+// Endpoint is one logical route with a handler per version: register
+// variants with Handle or HandleFunc, register Serve on the Router, and
+// each request runs the variant the Match rule picks for its resolved
+// version. Set up at startup like the Router itself: registration is not
+// safe to run concurrently with Serve.
 type Endpoint[V any] struct {
 	resolver *Resolver[V]
 	config   endpointConfig
@@ -88,17 +85,11 @@ func NewEndpoint[V any](resolver *Resolver[V], opts ...EndpointOption) *Endpoint
 }
 
 // Handle registers a typed handler on e as the variant at version raw.
-// The contract matches Router.Handle: the handler shape is
-// func(ctx, *Req) (*Resp, error), each variant free to have its own Req
-// and Resp, binding is prepared once here, and misuse panics at
-// registration rather than on the first request: a version the scheme
-// can't parse, a duplicate version, or a Req the parser can't bind.
-//
-// It's a package function rather than an Endpoint method because a method
-// carrying its own type parameters on an already-generic receiver
-// produces export data golangci-lint's importer can't read yet, the same
-// tooling lag .golangci.yml documents. Fold it into a method once the
-// toolchain catches up.
+// The contract matches Router.Handle: each variant has its own Req and
+// Resp, binding is prepared once here, and misuse (an unparseable or
+// duplicate version, an unbindable Req) panics at registration. It's a
+// package function, not a method: a generic method on a generic receiver
+// produces export data golangci-lint can't read yet (see .golangci.yml).
 func Handle[V, Req, Resp any](e *Endpoint[V], raw string, handler func(context.Context, Req) (Resp, error)) {
 	h, err := dflhttp.Adapt(e.config.parser, handler)
 	if err != nil {
@@ -109,12 +100,10 @@ func Handle[V, Req, Resp any](e *Endpoint[V], raw string, handler func(context.C
 }
 
 // HandleFunc registers a raw HandlerFunc as the variant at version raw,
-// for variants the typed model doesn't fit; it mirrors Router.HandleFunc.
-// It panics on a version the scheme can't parse or a duplicate version.
-//
-// When raw is a preview literal (Resolver.AllowPreview), the handler
-// becomes the endpoint's preview variant instead of a dated one; at most
-// one may be declared.
+// for variants the typed model doesn't fit, mirroring Router.HandleFunc;
+// it panics on an unparseable or duplicate version. When raw is a preview
+// literal (Resolver.AllowPreview) the handler becomes the endpoint's
+// preview variant instead of a dated one; at most one may be declared.
 func (e *Endpoint[V]) HandleFunc(raw string, h dflhttp.HandlerFunc) {
 	if slices.Contains(e.resolver.preview, raw) {
 		if e.preview != nil {
@@ -140,20 +129,11 @@ func (e *Endpoint[V]) HandleFunc(raw string, h dflhttp.HandlerFunc) {
 }
 
 // Serve resolves the request's version, picks the variant per the Match
-// rule, records the outcome on the context for FromContext, and calls
-// the variant. Its shape is dflhttp.HandlerFunc, so an Endpoint registers
-// on a Router as a raw route:
-//
-//	r.HandleFunc(http.MethodGet, "/users", users.Serve)
-//
-// A request pinned to a latest literal (Resolver.AllowLatest) is served
-// by the newest registered variant, whatever the Match rule. One pinned
-// to a preview literal (Resolver.AllowPreview) is served by the preview
-// variant when declared, and by the newest variant otherwise.
-//
-// Failures return *dflhttp.ReqError values (see the package errors), so
-// they flow through the Router's usual error pipeline. Serving an
-// Endpoint with no variants is a 500 version_unconfigured.
+// rule, records the outcome on the context for FromContext, and calls the
+// variant. It's a dflhttp.HandlerFunc, so it registers as a raw route. A
+// latest pin gets the newest variant, whatever the Match rule; a preview
+// pin gets the preview variant, or the newest without one. Failures are
+// *dflhttp.ReqError; an Endpoint with no variants is a 500 version_unconfigured.
 func (e *Endpoint[V]) Serve(w http.ResponseWriter, r *http.Request) error {
 	if len(e.variants) == 0 && e.preview == nil {
 		// Not the caller's fault, so this one opts out of ReqError's 400

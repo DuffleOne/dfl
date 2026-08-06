@@ -3,18 +3,11 @@ package version
 import "context"
 
 // Resolved records the outcome of version dispatch for one request.
-// Requested is the version the client asked for (after any Default);
-// Served is the version of the variant that answered, which under
-// MatchCompatible can be older than Requested. Latest reports that the
-// client asked for the latest pseudo-version (a literal enabled with
-// Resolver.AllowLatest) rather than a concrete pin; Requested then equals
-// Served, the newest variant at dispatch time.
-//
-// Preview reports that the client asked for the preview overlay. When the
-// endpoint declared a preview variant, that variant answered and both
-// versions stay the zero V, there being no version to name; when it
-// didn't, the newest variant answered and the fields read as they do for
-// Latest.
+// Requested is the pin the client asked for (after any Default); Served is
+// the variant that answered, older than Requested under MatchCompatible.
+// Latest and Preview report pseudo-version pins: under Latest the two
+// versions are equal, and under Preview with a preview variant both stay
+// the zero V, there being no version to name.
 type Resolved[V any] struct {
 	Requested V
 	Served    V

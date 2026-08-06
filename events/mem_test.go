@@ -42,7 +42,7 @@ func TestMemSinkDetachedContext(t *testing.T) {
 		return nil
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // cancel the parent before publishing
 
 	if err := bus.Emit(ctx, evtPing{Seq: 1}); err != nil {
@@ -75,7 +75,7 @@ func TestMemSinkConcurrentSubscribeAndPublish(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			_ = bus.Emit(context.Background(), evtPing{Seq: 1})
+			_ = bus.Emit(t.Context(), evtPing{Seq: 1})
 		}()
 	}
 

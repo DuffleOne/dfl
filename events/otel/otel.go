@@ -1,16 +1,9 @@
-// Package otel is an events.Plugin that propagates OpenTelemetry trace context
-// through events and records a span on each publish and delivery.
-//
-// Install it on a bus with events.WithPlugins. On publish it starts a producer
-// span and injects the trace context into the envelope headers; on deliver it
-// extracts that context and starts a consumer span as its child, so a single
-// trace flows from the emitter, across the transport, into the handler:
-//
-//	bus := events.NewBus(sink, events.WithPlugins(otel.New()))
-//
-// Cross-process propagation needs the sink to carry Envelope.Headers over its
-// transport. MemSink does, and the cloud adapters map them to native message
-// attributes.
+// Package otel is an events.Plugin propagating OpenTelemetry trace
+// context through events, with a span on each publish and delivery: the
+// producer span injects context into the envelope headers, the consumer
+// span extracts it and continues the trace across the transport. Install
+// with events.WithPlugins(otel.New()). Propagation needs the sink to
+// carry Envelope.Headers, which MemSink and the cloud adapters all do.
 package otel
 
 import (

@@ -1,12 +1,8 @@
-// Package sqs provides an events.Sink backed by Amazon SQS, the basic AWS event
-// transport: Publish sends a message to the queue, and Receive long-polls it,
-// dispatching each message to the handler registered for its event name and
-// deleting it on success. One queue carries every event type; each message
-// tags its name in the "event" message attribute.
-//
-// This is a pull sink: you run Receive as a worker. SQS has no HTTP push, so
-// there is no push variant here. For push, see the sns and eventbridge packages
-// or events/gcp/pubsub.
+// Package sqs provides an events.Sink backed by Amazon SQS: Publish sends
+// to the queue, and Receive long-polls it as a worker, dispatching each
+// message by the event name in its "event" attribute and deleting it on
+// success. One queue carries every event type. SQS has no HTTP push; for
+// push see sns, eventbridge, or events/gcp/pubsub.
 package sqs
 
 import (

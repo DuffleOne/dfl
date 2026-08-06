@@ -1,15 +1,9 @@
-// Example app: the same handlers wired two ways, in-process (async) and over
-// HTTP (POST /events/{name}).
+// Example app: the same handlers wired two ways, in-process (async) and
+// over HTTP; POST /events/user.created and /events/orders-shipped.
 //
 // Run:
 //
 //	go run ./events/examples/app
-//
-// then in another shell:
-//
-//	curl -i -X POST localhost:8080/events/user.created   -d '{"id":"1","email":"a@b.com"}'
-//	curl -i -X POST localhost:8080/events/orders-shipped -d '{"order_id":"7","carrier":"dhl"}'
-//	curl -i -X POST localhost:8080/events/user.created   -d '{"id":"2","email":""}'  # 400
 package main
 
 import (

@@ -1,8 +1,5 @@
-// Example program demonstrating TxSerializableCtx and its built-in retry. A
-// few goroutines each run a serializable transaction that reads then
-// increments a counter row; the conflicting writes produce SerializationFailure
-// errors, which retrySerializable absorbs by re-running the closure on a
-// fresh transaction. The final counter value should equal the worker count.
+// Example program: TxSerializableCtx retrying serialization conflicts.
+// Goroutines increment one row; the final count equals the worker count.
 //
 // Run:
 //

@@ -2,14 +2,11 @@ package version
 
 import "net/http"
 
-// Source extracts the raw version string from a request. ok reports
-// whether this source found one; a Resolver tries its sources in order
-// and the first hit decides the request.
-//
-// The built-ins cover headers, query parameters, path values, and a
-// static default. Anything else is a func of this shape: an app build
-// number parsed out of User-Agent, a claim from an already-verified
-// token, a per-client pin looked up from the request, and so on.
+// Source extracts the raw version string from a request; ok reports
+// whether it found one, and a Resolver tries its sources in order until
+// the first hit. The built-ins cover headers, query parameters, path
+// values, and a static default; anything else is a func of this shape (a
+// build number from User-Agent, a claim from a verified token).
 type Source func(r *http.Request) (raw string, ok bool)
 
 // Header reads the version from the named request header. Absent or

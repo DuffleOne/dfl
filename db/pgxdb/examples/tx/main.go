@@ -1,9 +1,5 @@
-// Example program showing how to use TxCtx with a repository whose methods
-// don't take a pgxdb.Querier argument. UsersRepo (in repo.go) holds a
-// *pgxdb.DB and routes each call through pgxdb.GetQuerier internally. The
-// same usersRepo.Create call runs against the running transaction when
-// invoked inside a TxCtx closure, and against the pool otherwise, without
-// the call site changing shape.
+// Example program: TxCtx with a repository that never takes a Querier;
+// via GetQuerier the same call joins the running tx or falls to the pool.
 //
 // Run:
 //

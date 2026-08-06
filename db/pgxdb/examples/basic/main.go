@@ -1,7 +1,5 @@
-// Example program exercising the users helpers against the pool, no
-// transactions involved. The pool itself satisfies pgxdb.Querier, so the
-// helpers accept it as the fallback Querier and GetQuerier hands it back
-// because there's no tx on the context.
+// Example program: the users helpers against the pool alone. The pool
+// satisfies pgxdb.Querier, so GetQuerier hands it back, no tx in sight.
 //
 // Run:
 //

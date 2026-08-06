@@ -1,18 +1,9 @@
-// Package bustest exports a conformance suite that every events.Sink backend
-// should pass. Each backend's *_test.go calls Run with a Factory that builds a
-// Bus over that backend; the suite then exercises the transport-agnostic
-// behaviour we care about (delivery, fan-out, validation on both sides, error
-// routing, middleware composition).
-//
-// Behaviour that's specific to one backend (synchronous vs async delivery,
-// ordering, durability) is deliberately not asserted here; it lives in that
-// backend's own tests. The MemSink suite caller is events/mem_test.go.
-//
-// Async deliveries are awaited with a sync.WaitGroup rather than channels: a
-// handler (or the error handler) calls Done, and the test calls Wait before
-// asserting. Wait establishes the happens-before that makes the captured values
-// safe to read. A genuinely broken sink that never delivers will hang until
-// `go test`'s own timeout fires.
+// Package bustest exports a conformance suite every events.Sink backend
+// should pass: a backend's tests call Run with a Factory building a Bus
+// over it, and the suite covers the transport-agnostic behaviour
+// (delivery, fan-out, two-sided validation, error routing, middleware).
+// Backend specifics like ordering and durability live in that backend's
+// own tests. Async deliveries are awaited with WaitGroups, never sleeps.
 package bustest
 
 import (

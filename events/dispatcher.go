@@ -7,19 +7,11 @@ import (
 )
 
 // Dispatcher is a synchronous Subscribe/Dispatch registry for sinks that
-// receive events out of band, where the receiving side has a raw (name,
-// payload) in hand and wants a single error back to decide whether to ack.
-//
-// It's the building block the cloud adapters use. A pull sink (an SQS queue, a
-// Pub/Sub streaming pull) embeds a Dispatcher to satisfy Subscribe, and its
-// receive loop calls Dispatch for each message, deleting or nacking on the
-// result. A push sink (an SNS or Pub/Sub HTTP push) does the same from its HTTP
-// handler. Delivery is synchronous, unlike MemSink, because the caller needs
-// the outcome to ack or redeliver.
-//
-// Dispatch runs every handler registered for the event name and joins their
-// errors, so a single message that fans out to several handlers nacks if any of
-// them fail (at-least-once redelivery may then re-run the ones that succeeded).
+// receive events out of band and want one error back to decide an ack: a
+// pull sink embeds it for Subscribe and calls Dispatch per message, and a
+// push sink does the same from its HTTP handler. Dispatch runs every
+// handler registered for the name and joins their errors, so a fan-out
+// nacks if any handler fails (redelivery may re-run the ones that passed).
 type Dispatcher struct {
 	mu   sync.RWMutex
 	subs map[string][]HandlerFunc

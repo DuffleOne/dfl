@@ -1,8 +1,7 @@
-// Command sns publishes events to Amazon SNS and receives them back over an SNS
-// HTTP push subscription. The sink is an http.Handler, so it mounts on any mux.
+// Command sns publishes to Amazon SNS and receives over an SNS HTTP push
+// subscription (the sink is an http.Handler, mountable on any mux).
 //
-// Run (needs AWS credentials, a topic, and a public URL SNS can reach, e.g. via
-// a tunnel):
+// Run, with AWS credentials and a public URL SNS can reach:
 //
 //	TOPIC_ARN=arn:aws:sns:eu-west-1:123:events go run .
 package main

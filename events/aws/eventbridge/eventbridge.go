@@ -1,17 +1,9 @@
-// Package eventbridge provides an events publisher and an HTTP push ingress for
-// Amazon EventBridge, the more complex AWS event bus. Publish puts an event on
-// the bus with the event name as its detail-type; the push sink receives events
-// routed to an HTTP target (an API destination) and dispatches them.
-//
-// EventBridge does not let you pull directly. Delivery is via rules that route
-// to targets: an SQS queue (pull it with the sqs package) or an HTTP API
-// destination (push it here).
-//
-// Envelope.Headers are not carried: an EventBridge entry has no per-message
-// attribute bag like SQS, SNS, or Pub/Sub, so there's nowhere to put trace
-// context without wrapping the detail payload. If you need trace propagation
-// over EventBridge, route to an SQS target and use the sqs package, which does
-// carry headers.
+// Package eventbridge provides an events publisher and an HTTP push
+// ingress for Amazon EventBridge: Publish puts events on the bus with the
+// event name as detail-type, and the push sink receives API-destination
+// deliveries. EventBridge has no pull; route to SQS and pull that instead.
+// Envelope.Headers are not carried (entries have no attribute bag), so for
+// trace propagation route to an SQS target and use the sqs package.
 package eventbridge
 
 import (

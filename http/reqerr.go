@@ -8,14 +8,11 @@ import (
 	"strings"
 )
 
-// ReqError is the canonical http error type. Code, Meta, and Reasons are
-// serialised on the wire; the causes attached by New and Wrap are internal,
-// traversed by errors.Is and errors.As.
-//
-// The status is not part of the body. It's on the status line already, and
-// leaving it off makes the shape the same as cher's, so a service can move
-// between the two without its clients noticing. StatusCode derives it from
-// Code instead; WithStatus overrides that for a code the table doesn't know.
+// ReqError is the canonical http error type. Code, Meta, and Reasons go on
+// the wire; the causes attached by New and Wrap stay internal, traversed
+// by errors.Is and errors.As. There is no status in the body: it lives on
+// the status line, derived from Code by StatusCode or forced by
+// WithStatus, which keeps the wire shape identical to cher's.
 type ReqError struct {
 	Code    string   `json:"code"`
 	Meta    M        `json:"meta,omitempty"`
@@ -25,24 +22,12 @@ type ReqError struct {
 	causes []error
 }
 
-// Reason is one machine-readable reason behind an error, for responses
-// where a single code doesn't tell the caller what to fix: each failed
-// check on a request becomes a Reason, so the client learns every problem
-// in one round trip. Code is the stable identifier to match on; Meta
-// carries the structured detail, conventionally the field it concerns and
-// where that field travelled:
-//
-//	dflhttp.Reason{Code: "required", Meta: dflhttp.M{"in": "body", "field": "name"}}
-//
-// Reasons nest, so a check that decomposes keeps its shape: a rejected
-// object field carries the failures of the fields inside it rather than
-// flattening them all into one list where the client has to guess which
-// belongs to which.
-//
-//	dflhttp.Reason{Code: "invalid", Meta: dflhttp.M{"in": "body", "field": "address"},
-//	    Reasons: []dflhttp.Reason{
-//	        {Code: "required", Meta: dflhttp.M{"field": "postcode"}},
-//	    }}
+// Reason is one machine-readable reason behind an error: each failed check
+// becomes a Reason, so the client learns every problem in one round trip
+// rather than fixing one per attempt. Code is the stable identifier to
+// match on; Meta carries the detail, conventionally the field concerned
+// and where it travelled ("in": "body"). Reasons nest, so a check that
+// decomposes keeps its shape instead of flattening into one ambiguous list.
 type Reason struct {
 	Code    string   `json:"code"`
 	Meta    M        `json:"meta,omitempty"`
@@ -68,13 +53,10 @@ var codeStatuses = map[string]int{
 	"unknown":                http.StatusInternalServerError,
 }
 
-// New builds a ReqError. causes (if any) are recorded for errors.Is and
-// errors.As traversal and stay off the wire; detail the client should see
-// goes on with WithReasons.
-//
-// The status follows from code (see StatusCode), so most handlers never name
-// one. Reach for WithStatus when yours needs a status the table doesn't
-// derive.
+// New builds a ReqError. causes stay off the wire, recorded for errors.Is
+// and errors.As; detail the client should see goes on with WithReasons.
+// The status follows from code (see StatusCode), so most handlers never
+// name one.
 func New(code string, meta M, causes ...error) *ReqError {
 	return &ReqError{
 		Code:   code,
@@ -97,14 +79,11 @@ func Wrap(err error, code string, meta M, causes ...error) *ReqError {
 	}
 }
 
-// StatusCode is the HTTP status to respond with: the one WithStatus set if
-// there is one, otherwise the one Code maps to, otherwise 400.
-//
-// 400 is the default because a ReqError is an error somebody wrote down on
-// purpose. That makes it part of the contract, something the caller can act
-// on, and not the sort of thing that should page anyone. Codes that genuinely
-// are the server's fault say so: "unknown", which is what DefaultCoercer
-// gives an error nothing classified, maps to 500.
+// StatusCode is the HTTP status to respond with: WithStatus's override
+// when set, else the status Code maps to, else 400. The default is 400
+// because a ReqError is an error somebody wrote down on purpose: part of
+// the contract, not something that should page anyone. Codes that
+// genuinely are the server's fault, like unknown, map to 500.
 func (e *ReqError) StatusCode() int {
 	if e.status != 0 {
 		return e.status
@@ -117,12 +96,9 @@ func (e *ReqError) StatusCode() int {
 	return http.StatusBadRequest
 }
 
-// WithStatus returns a copy of e that responds with status, whatever its Code
-// would otherwise derive. For the statuses outside the small canonical set:
-// a 409 on a conflicting write, a 402, a 502 from a dead upstream.
-//
-// It changes the status line only. Nothing about the body changes, so the
-// caller still matches on Code.
+// WithStatus returns a copy of e that responds with status, whatever its
+// Code would derive: a 409 on a conflicting write, a 502 from a dead
+// upstream. The body is untouched, so callers still match on Code.
 func (e *ReqError) WithStatus(status int) *ReqError {
 	out := *e
 	out.status = status

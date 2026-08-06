@@ -1,16 +1,5 @@
-// Example program demonstrating dflhttp on the stdlib *http.ServeMux.
-//
-// Endpoints:
-//
-//	GET  /api/health           empty req,  status resp
-//	GET  /api/sha              empty req,  status resp
-//	GET  /api/version          empty req,  status resp
-//	POST /api/ping             empty req,  empty resp (204)
-//	GET  /api/users            query req,  list resp
-//	GET  /api/users/{id}       path req,   struct resp (404 on miss)
-//	POST /api/users            body req,   struct resp
-//	PUT  /api/users/{id}       path+body,  struct resp
-//	POST /api/widgets/{id}     path+query+body, validated; 400 on failure
+// Example program: a full API on the stdlib *http.ServeMux, covering
+// path, query, and body binding, 404s, validation, and 204s.
 //
 // Run:
 //

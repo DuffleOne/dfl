@@ -1,9 +1,7 @@
-// Command push publishes to Google Cloud Pub/Sub and receives via a push
-// subscription mounted as an HTTP endpoint. The sink is an http.Handler, so it
-// mounts on any mux.
+// Command push publishes to Pub/Sub and receives via a push subscription
+// mounted as an HTTP endpoint (the sink is an http.Handler).
 //
-// Run (needs GCP credentials, a topic, and a push subscription pointed at this
-// server's POST /events/pubsub):
+// Run, with GCP credentials and a push subscription aimed at this server:
 //
 //	PROJECT_ID=my-project go run .
 package main

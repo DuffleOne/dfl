@@ -1,9 +1,5 @@
-// Command plugin shows how to write and install a Bus plugin. The plugin here
-// assigns each event a correlation id on the way out, carries it in the
-// envelope headers, and reads it back on the way in, putting it on the context
-// the handler sees. That's the whole plugin system in one place: the produce
-// hook, the consume hook, and the Envelope.Headers carrier that links them.
-// OpenTelemetry works exactly the same way; see events/otel.
+// Command plugin builds a Bus plugin from scratch: a correlation id set on
+// publish, carried in Envelope.Headers, restored to the context on deliver.
 //
 // Run:
 //

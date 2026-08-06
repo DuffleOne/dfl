@@ -1,11 +1,8 @@
-// Package sns provides an events publisher and an HTTP push ingress for Amazon
-// SNS. Publish sends an event to its topic; the push sink receives SNS HTTP
-// notifications and dispatches them to the registered handlers, so an SNS
-// subscription can deliver straight into your bus.
-//
-// SNS does not let you pull. For delivery you either push to an HTTP endpoint
-// (this package) or subscribe an SQS queue to the topic and pull that with the
-// sqs package. A common shape is: publish with this package, receive with sqs.
+// Package sns provides an events publisher and an HTTP push ingress for
+// Amazon SNS: Publish sends to the topic, and the push sink turns SNS
+// notifications into dispatches, so a subscription delivers straight into
+// your bus. SNS has no pull; either push here, or subscribe an SQS queue
+// to the topic and pull that with the sqs package.
 package sns
 
 import (

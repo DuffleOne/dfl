@@ -24,7 +24,7 @@ func TestInProcess(t *testing.T) {
 	bus.On(func(_ context.Context, e UserCreated) error { gotEmail = e.Email; wg.Done(); return nil })
 	bus.On(func(_ context.Context, e UserCreated) error { gotID = e.ID; wg.Done(); return nil })
 
-	if err := bus.Emit(context.Background(), UserCreated{ID: "1", Email: "a@b.com"}); err != nil {
+	if err := bus.Emit(t.Context(), UserCreated{ID: "1", Email: "a@b.com"}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 

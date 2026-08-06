@@ -15,17 +15,12 @@ import (
 	samberoops "github.com/samber/oops"
 )
 
-// Coerce projects err into a *dflhttp.ReqError. Order of attempts:
-//   - nil in, nil out
-//   - existing *dflhttp.ReqError (via errors.As)
-//   - samber/oops error: extract Code, Context, Public
-//   - any error with a non-nil Unwrap chain: derive code from message
-//   - everything else: "unknown"
-//
-// Everything except the pass-through gets a 500, overriding the status
-// ReqError would derive from the code. An oops error is one that arrived
-// carrying a stack trace, which makes it something that went wrong on this
-// side rather than a contract the caller can do anything about.
+// Coerce projects err into a *dflhttp.ReqError: nil in, nil out; an
+// existing *ReqError passes through; an oops error contributes Code,
+// Context, and Public; a wrapped generic error derives a code from its
+// message; anything else is "unknown". Everything except the pass-through
+// gets a 500: an oops error carries a stack trace, which makes it a
+// server-side failure, not a contract the caller can act on.
 func Coerce(err error) *dflhttp.ReqError {
 	if err == nil {
 		return nil

@@ -1,23 +1,9 @@
-// Package events provides a typed event bus, the producer/consumer twin of the
-// http package in this module.
-//
-// You define an event struct that names itself with EventName, register a
-// handler of shape func(context.Context, E) error, and call Emit with the
-// struct directly. The Bus encodes the event, validates it, and fans it out;
-// you never marshal an envelope or wire up binding by hand.
-//
-// There are two ways to handle an event, both taking the same handler:
-//
-//   - On subscribes in-process. Delivery is asynchronous: Emit blocks only until
-//     the event is committed for delivery, then returns; handlers run on their
-//     own goroutines, and a handler error goes to the bus ErrorHandler.
-//   - RegisterEndpoint (see endpoint.go) exposes the handler over HTTP as a POST
-//     to /events/{name}, decoding the event from the JSON body. It bridges into
-//     the http package and runs synchronously.
-//
-// The Bus wraps a Sink, the transport, the way the http Router wraps a Mux.
-// MemSink is the in-process default; external transports drop in behind the
-// same interface.
+// Package events provides a typed event bus, the producer/consumer twin
+// of the http package. An event names itself with EventName, a handler is
+// func(ctx, E) error, and Emit publishes the struct directly. On
+// subscribes in-process with async delivery; RegisterEndpoint serves the
+// same handler at POST /events/{name}. The Bus wraps a Sink as the Router
+// wraps a Mux: MemSink by default, cloud transports drop in behind it.
 package events
 
 import (
@@ -73,17 +59,12 @@ type Coercer func(error) *EventError
 // override with WithErrorHandler.
 type ErrorHandler func(ctx context.Context, env Envelope, err *EventError)
 
-// Plugin is a cross-cutting extension installed on a Bus with WithPlugins. It
-// wraps both sides of an event's life: WrapPublish on the produce side (to
-// inject trace context or metadata into the outgoing envelope, start a producer
-// span, and so on) and WrapDeliver on the consume side (to extract that context
-// and continue the trace around the handler). Either method may return next
-// unchanged to opt out of that side.
-//
-// This is how something like OpenTelemetry plugs in: one WithPlugins call wires
-// up both injection on publish and extraction on deliver. The concrete OTel
-// plugin lives in its own module, github.com/duffleone/dfl/events/otel, so the
-// core stays dependency-free.
+// Plugin is a cross-cutting extension installed with WithPlugins, wrapping
+// both sides of an event's life: WrapPublish on the produce side and
+// WrapDeliver on the consume side, linked by Envelope.Headers. That's how
+// OpenTelemetry plugs in, one call wiring injection on publish and
+// extraction on deliver; the concrete plugin lives in its own module,
+// events/otel. Either method may return next unchanged to opt out.
 type Plugin interface {
 	WrapPublish(next PublishFunc) PublishFunc
 	WrapDeliver(next HandlerFunc) HandlerFunc
@@ -194,16 +175,12 @@ func (b *Bus) Use(mw ...Middleware) {
 	b.middleware = append(b.middleware, mw...)
 }
 
-// On registers an in-process handler for events of type E. The event name is
-// derived from E once at registration; a malformed E (or a codec that rejects
-// the shape via PrepareFor) panics here rather than on the first event.
-//
-// Delivery is asynchronous. When an event of E's name is published, the sink
-// runs the deliver callback on its own goroutine: it decodes the payload into
-// E, validates it, and calls handler. A non-nil error (from decode, validation,
-// middleware, or the handler) is coerced and passed to the bus ErrorHandler,
-// and also returned to the sink so a durable transport can retry. It is never
-// returned to whoever called Emit.
+// On registers an in-process handler for events of type E; the name is
+// derived from E once, and a malformed E (or a codec rejecting it via
+// PrepareFor) panics here, not on the first event. Delivery is async on
+// the sink's goroutines: decode, validate, then handler. Errors are
+// coerced and given to the bus ErrorHandler, and returned to the sink so
+// a durable transport can nack; Emit's caller never sees them.
 func (b *Bus) On[E Event](handler func(context.Context, E) error, mw ...Middleware) {
 	name, err := nameOf[E]()
 	if err != nil {

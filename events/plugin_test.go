@@ -40,7 +40,7 @@ func TestPluginPropagatesHeader(t *testing.T) {
 	bus := events.NewBus(events.NewMemSink(), events.WithPlugins(plugin))
 	bus.On(func(context.Context, evtPing) error { return nil })
 
-	if err := bus.Emit(context.Background(), evtPing{Seq: 1}); err != nil {
+	if err := bus.Emit(t.Context(), evtPing{Seq: 1}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 
@@ -68,7 +68,7 @@ func TestPluginFuncsPublishOnly(t *testing.T) {
 
 	bus := events.NewBus(events.NewMemSink(), events.WithPlugins(plugin))
 
-	if err := bus.Emit(context.Background(), evtPing{Seq: 1}); err != nil {
+	if err := bus.Emit(t.Context(), evtPing{Seq: 1}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 

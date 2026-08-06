@@ -65,7 +65,7 @@ func message(name, body, receipt string) types.Message {
 func receive(t *testing.T, sink *sqs.Sink) (stop func()) {
 	t.Helper()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 
 	go func() { done <- sink.Receive(ctx) }()
@@ -92,7 +92,7 @@ func TestPublishTagsEventAndHeaders(t *testing.T) {
 		Headers: map[string]string{"traceparent": "00-abc"},
 	}
 
-	if err := sink.Publish(context.Background(), env); err != nil {
+	if err := sink.Publish(t.Context(), env); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 

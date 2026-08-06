@@ -1,15 +1,8 @@
-// Package cher provides a Coercer that understands the cher errors from
-// wearemojo/mojo-public-go and projects them into *dflhttp.ReqError. Opt-in:
-// callers that don't use cher should use dflhttp.DefaultCoercer instead.
-//
-// It shares a name with the library it adapts, so alias it at use sites that
-// need both:
-//
-//	import (
-//		"github.com/wearemojo/mojo-public-go/lib/cher"
-//
-//		dflcher "github.com/duffleone/dfl/http/cher"
-//	)
+// Package cher provides a Coercer for the cher errors from
+// wearemojo/mojo-public-go, projecting them into *dflhttp.ReqError.
+// Opt-in: callers that don't use cher want dflhttp.DefaultCoercer. It
+// shares a name with the library it adapts, so alias one of the two
+// (dflcher, conventionally) at use sites importing both.
 package cher
 
 import (
@@ -21,23 +14,12 @@ import (
 	mojocher "github.com/wearemojo/mojo-public-go/lib/cher"
 )
 
-// Coerce projects err into a *dflhttp.ReqError. Order of attempts:
-//   - nil in, nil out
-//   - existing *dflhttp.ReqError (via errors.As)
-//   - cher.E: code and meta carry over, reasons carry over with their nesting
-//     intact, and the status is the one cher assigns the code
-//   - everything else: "unknown", which is a 500
-//
-// The last case deliberately does not go through mojocher.Coerce, which would
-// put err.Error() in the meta of a 500. An error that reached here was never
-// classified, so its text is as likely to be a driver message or a file path
-// as something a client should read; it stays on the cause chain for logs
-// instead, exactly as dflhttp.DefaultCoercer leaves it.
-//
-// cher.E's Extra field is dropped rather than projected. It holds whatever
-// unrecognised JSON keys an upstream service's error body carried, kept for
-// log forensics, and forwarding those to our own callers leaks one service's
-// error shape through another.
+// Coerce projects err into a *dflhttp.ReqError: nil passes through, an
+// existing *ReqError wins, and a cher.E carries over its code, meta, and
+// nested reasons on cher's own status table. Anything else is a 500
+// "unknown" with the message left on the cause chain, not in the body:
+// unclassified text is as likely a driver message as something a caller
+// should read. cher.E's Extra is dropped, being upstream log forensics.
 func Coerce(err error) *dflhttp.ReqError {
 	if err == nil {
 		return nil

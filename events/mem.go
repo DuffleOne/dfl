@@ -5,16 +5,12 @@ import (
 	"sync"
 )
 
-// MemSink is the in-process Sink, the default backend, analogous to reaching
-// for *http.ServeMux with the http package's Router. Publish fans an event out
-// to every subscriber registered for its name, each on its own goroutine.
-//
-// Delivery is asynchronous: Publish launches the goroutines and returns, so by
-// the time it returns the event is certain to fire, but the handlers themselves
-// run in the background and in no guaranteed order. A deliver error is dropped
-// here, since the bus has already routed it to the ErrorHandler; a durable
-// transport would nack on it instead (see the events/aws and events/gcp
-// modules).
+// MemSink is the in-process Sink, the default backend, as *http.ServeMux
+// is to the Router. Publish fans out to every subscriber of the event's
+// name, each on its own goroutine, and returns once they're launched: the
+// event is then certain to fire, though handlers run in the background in
+// no guaranteed order. Deliver errors are dropped here, the bus having
+// already routed them to the ErrorHandler; a durable transport nacks.
 type MemSink struct {
 	mu   sync.RWMutex
 	subs map[string][]HandlerFunc

@@ -68,29 +68,22 @@ func NewResolver[V any](scheme Scheme[V], sources ...Source) *Resolver[V] {
 	return &Resolver[V]{scheme: scheme, sources: sources}
 }
 
-// AllowLatest teaches the resolver request literals that mean "the newest
-// variant of whichever endpoint answers". With AllowLatest("latest"), a
-// request pinned to latest is served by the endpoint's newest registered
-// variant, whatever the Match rule; combined with a trailing
-// Default("latest") source, requests carrying no version at all mean the
-// same. Leave it unconfigured to keep pins concrete, the package default.
-//
-// Literals are matched exactly, after the usual whitespace trim, and are
-// checked before the scheme parses. A literal the scheme could itself
-// parse panics, since it would shadow a real version, as do an empty call,
-// a blank literal, and a duplicate. Calls accumulate and belong in wiring,
-// before traffic; it returns the resolver so it can chain off NewResolver.
+// AllowLatest teaches the resolver request literals meaning "the newest
+// variant of whichever endpoint answers", whatever the Match rule; pair
+// with a trailing Default("latest") to make no-version requests mean the
+// same. Literals match exactly, before the scheme parses; one the scheme
+// could parse panics, as do blanks and duplicates. Calls accumulate, chain
+// off NewResolver, and belong in wiring, before traffic.
 func (rv *Resolver[V]) AllowLatest(literals ...string) *Resolver[V] {
 	return rv.allowLiterals("latest", &rv.latest, literals)
 }
 
 // AllowPreview teaches the resolver request literals for the experimental
-// overlay. A request pinned to preview is served by the endpoint's preview
-// variant when one is declared, and by the newest stable variant
-// otherwise, so preview clients follow latest wherever nothing
-// experimental is going on. The same literals are how a preview variant is
-// declared: Handle(e, "preview", handler). The literal rules match
-// AllowLatest's, and a literal can't be both latest and preview.
+// overlay: a preview pin is served by the endpoint's preview variant when
+// one is declared, and by the newest stable variant otherwise, so preview
+// clients follow latest wherever nothing experimental is going on. The
+// same literals declare a preview variant, Handle(e, "preview", h). The
+// literal rules match AllowLatest's; a literal can't be both.
 func (rv *Resolver[V]) AllowPreview(literals ...string) *Resolver[V] {
 	return rv.allowLiterals("preview", &rv.preview, literals)
 }
@@ -120,12 +113,11 @@ func (rv *Resolver[V]) allowLiterals(kind string, dst *[]string, literals []stri
 }
 
 // StatusHeader names a response header for Endpoint.Serve to report how
-// dispatch went: "stable", "latest", or "preview" for the channel the
-// request asked for, plus the served variant's version when a dated one
-// answered, e.g. "stable; version=2024-06-01". Informational, for the
-// engineer reading the response rather than anything parsing it; crpc
-// callers will recognise "Infra-Endpoint-Status". Off unless set, and set
-// once: naming a second header panics.
+// dispatch went: the channel the request asked for, plus the served
+// version when a dated variant answered, e.g. "stable;
+// version=2024-06-01". Informational, for the engineer reading the
+// response; crpc callers will recognise "Infra-Endpoint-Status". Off
+// unless set, and set once: naming a second header panics.
 func (rv *Resolver[V]) StatusHeader(name string) *Resolver[V] {
 	if strings.TrimSpace(name) == "" {
 		panic("dflhttp/version: StatusHeader needs a header name")
@@ -140,19 +132,12 @@ func (rv *Resolver[V]) StatusHeader(name string) *Resolver[V] {
 	return rv
 }
 
-// Resolve extracts and parses the request's version. Sources are tried
-// in order and the first one to yield a value decides the request: a
-// value that fails to parse is a 400, not a fall-through to the next
-// source, because a garbled explicit version should be loud rather than
-// silently defaulted. Values are trimmed of surrounding whitespace, and
-// a whitespace-only value counts as a miss. A value matching an
-// AllowLatest or AllowPreview literal returns ErrLatest or ErrPreview,
-// bare, for the caller to act on.
-//
-// Errors are otherwise *dflhttp.ReqError values carrying ErrMissing or
-// ErrInvalid as causes, so they can go straight back through a Router's
-// error pipeline. Endpoint.Serve calls Resolve for you; call it yourself
-// only when building something custom on the resolution half alone.
+// Resolve extracts and parses the request's version. Sources are tried in
+// order and the first hit decides: a value that fails to parse is a 400,
+// not a fall-through, because a garbled pin should be loud. Values are
+// trimmed, whitespace-only is a miss, and latest and preview literals
+// return bare ErrLatest and ErrPreview; other failures are *ReqError.
+// Endpoint.Serve calls this for you; call it for custom dispatch.
 func (rv *Resolver[V]) Resolve(r *http.Request) (V, error) {
 	var zero V
 

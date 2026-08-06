@@ -1,10 +1,7 @@
-// Package api hosts the example handlers shared between the std and chi
-// example programs. It's deliberately router-agnostic: handlers take
-// *dflhttp.Router and don't know which mux it's wrapping.
-//
-// Convention used by every handler in this package: both Req and Resp are
-// pointer types. That way handlers can return (nil, err) cleanly on the
-// error path, and Empty-style routes get a nil req for free.
+// Package api hosts the example handlers shared by the std and chi
+// programs, deliberately router-agnostic. Convention throughout: pointer
+// Req and Resp, so error paths return (nil, err) cleanly and Empty routes
+// get a nil req for free.
 package api
 
 import (

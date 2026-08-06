@@ -1,14 +1,9 @@
-// Package pubsub provides events transports backed by Google Cloud Pub/Sub, in
-// both flavours so a deployment can pick:
-//
-//   - PullSink streams messages with a background receiver, acking on success
-//     and nacking on failure. Run it as a worker.
-//   - PushSink is an http.Handler for a Pub/Sub push subscription, so Pub/Sub
-//     POSTs deliveries straight to your server. Run it behind an endpoint.
-//
-// Both publish to a topic per event name, tagging the name in the message's
-// "event" attribute. Publish blocks on the server ack, which is the delivery
-// guarantee Emit relies on.
+// Package pubsub provides events transports over Google Cloud Pub/Sub in
+// both flavours: PullSink streams with a background receiver (a worker,
+// acking on success and nacking on failure), and PushSink is an
+// http.Handler for a push subscription. Both publish to a topic per event
+// name, tagging the name in the "event" attribute, and Publish blocks on
+// the server ack, the delivery guarantee Emit relies on.
 package pubsub
 
 import (

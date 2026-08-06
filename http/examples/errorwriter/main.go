@@ -1,19 +1,9 @@
-// Example program: WithErrorWriter hands the whole error response to the
-// caller. The router still does routing, binding, and middleware, but the
-// wire shape of errors is defined here, not by dfl. This program emits its
-// own envelope, {code, reasons}, the kind of shape an in-house error
-// package already has; dfl's *ReqError never reaches the wire.
+// Example program: WithErrorWriter hands the error response to the caller;
+// this service emits its own envelope, dfl's shape never reaching the wire.
 //
 // Run:
 //
 //	go run ./http/examples/errorwriter
-//
-// then:
-//
-//	curl -i localhost:8080/teams/platform          # 200
-//	curl -i localhost:8080/teams/gone              # 404, code only
-//	curl -i localhost:8080/teams/Bad%20Name        # 422, reasons verbatim
-//	curl -i 'localhost:8080/teams/platform?size=x' # 400, binding failure mapped
 package main
 
 import (

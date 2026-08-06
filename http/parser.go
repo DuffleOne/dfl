@@ -17,26 +17,12 @@ import (
 // dst is the addressable field; raw is the value as it arrived on the wire.
 type SetterFunc func(dst reflect.Value, raw string) error
 
-// RequestParser populates a typed request value from an *http.Request. A
-// single parser handles every handler shape in the router; routers that
-// don't override use DefaultRequestParser. It binds fields by struct tag:
-//
-//	`path:"name"`  from r.PathValue(name)
-//	`query:"name"` from r.URL.Query().Get(name)
-//	`json:"name"`  from the JSON request body
-//
-// Per-Req binding plans are cached, so the reflect cost is paid once per
-// (type, parser) pair.
-//
-// RequestParser is a concrete type rather than an interface because Parse is
-// generic over Req. Go 1.27 allows type parameters on methods, but only on
-// concrete types: interface methods still cannot have them, and a generic
-// method never satisfies an interface method. Customise a parser by setting
-// the hook fields below rather than by implementing it.
-//
-// The zero value is ready to use. Set the hooks before handing the parser to
-// a Router: they are read as binding plans are built, and changing them once
-// requests are in flight has no effect on plans already cached.
+// RequestParser populates a typed request from an *http.Request, binding
+// fields tagged path, query, and json; per-Req plans are cached, so the
+// reflect cost is paid once per (type, parser) pair. It's a concrete type
+// because Parse is generic, and Go 1.27's generic methods live on concrete
+// types only. The zero value is ready; set the hook fields below before
+// serving traffic, since cached plans don't rebuild.
 type RequestParser struct {
 	// DecodeBody replaces JSON body binding wholesale. It receives the
 	// request body and a pointer to the struct being bound, and is

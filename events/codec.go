@@ -2,24 +2,12 @@ package events
 
 import "encoding/json"
 
-// Codec encodes an event to a payload and decodes a payload back into a typed
-// event. It's the events analog of the http package's RequestParser: a single
-// codec serves every event shape in the bus.
-//
-// Encode takes the Event interface because the value is already in hand at
-// Emit time. Decode is generic because the deliver closure knows the concrete
-// type E it's decoding into, exactly as adapt calls parser.Parse[Req] in http.
-//
-// Codec is a concrete type rather than an interface because Decode is generic
-// over E. Go 1.27 allows type parameters on methods, but only on concrete
-// types: interface methods still cannot have them, and a generic method never
-// satisfies an interface method. Swap the wire format (msgpack, protobuf, an
-// envelope with a schema id) by setting the hooks below rather than by
-// implementing the type.
-//
-// The zero value encodes and decodes as JSON, so an event's json-tagged fields
-// are its wire form. That matches what RegisterEndpoint's HTTP body binding
-// expects; a codec that moves off JSON needs the endpoint to agree.
+// Codec encodes an event to its payload and decodes it back, one codec
+// for every event shape, as RequestParser is for http. It's a concrete
+// type because Decode is generic over E and Go 1.27's generic methods
+// live on concrete types only: swap the wire format via the hooks below,
+// not by reimplementing the type. The zero value speaks JSON, the same
+// wire form RegisterEndpoint's body binding expects.
 type Codec struct {
 	// Marshal encodes an event value to its wire payload. Defaults to
 	// json.Marshal.

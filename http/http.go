@@ -1,22 +1,9 @@
-// Package http provides a thin abstraction over an http server, with
-// typed handlers and structured errors.
-//
-// A handler is a function of shape func(context.Context, Req) (Resp, error).
-// The Router binds Req from path, query, and JSON body, calls the handler,
-// then JSON-encodes Resp on success or runs error through a Coercer on
-// failure.
-//
-// Use Empty as Req or Resp when there's no input or output of substance.
-//
-// The Router wraps a Mux. Both stdlib *http.ServeMux (Go 1.22+) and
-// go-chi/chi *chi.Mux satisfy Mux out of the box, so the package itself
-// has no awareness of any specific routing implementation: pass whichever
-// one you want to NewRouter and it works the same.
-//
-// The package is named http to keep import paths clean. To avoid the clash
-// with stdlib net/http at use sites, alias on import:
-//
-//	import dflhttp "github.com/duffleone/dfl/http"
+// Package http provides typed HTTP handlers over net/http. A handler is
+// func(ctx, Req) (Resp, error): the Router binds Req from path, query, and
+// JSON body, encodes Resp (Empty means 204), and serialises errors through
+// a pluggable Coercer. Anything shaped like *http.ServeMux or *chi.Mux
+// works as the mux. Import aliased, dflhttp, to dodge the stdlib clash;
+// the README is the full guide.
 package http
 
 import (
@@ -57,40 +44,19 @@ type Middleware func(next HandlerFunc) HandlerFunc
 // hierarchy (samber/oops, validation libs, etc.).
 type Coercer func(error) *ReqError
 
-// ErrorWriter writes the HTTP response for a failed request. It receives the
-// error exactly as the handler, middleware, or request binding returned it,
-// before any coercion, and owns the response outright: status, headers, and
-// body.
-//
-// When no ErrorWriter is set, the Router coerces the error with its Coercer
-// and writes the resulting *ReqError as JSON. Set one with WithErrorWriter
-// when the error wire shape is yours to define: the Router then never
-// consults the Coercer, and your own error types arrive intact for
-// errors.As. Binding failures still surface as *ReqError (see the codes on
-// RequestParser), so a custom writer should handle that type too, or lean on
-// DefaultErrorWriter as its fallback.
+// ErrorWriter writes the HTTP response for a failed request. It receives
+// the error exactly as the handler, middleware, or binding returned it,
+// before any coercion, and owns the response outright; the Coercer is
+// never consulted. Binding failures still arrive as *ReqError, so a custom
+// writer should handle that type too, or keep DefaultErrorWriter as its
+// fallback.
 type ErrorWriter func(w http.ResponseWriter, r *http.Request, err error)
 
 // DefaultErrorWriter returns the ErrorWriter the Router uses when none is
-// set: it coerces the error with c (DefaultCoercer when c is nil) and writes
-// the resulting *ReqError as JSON, on the status its StatusCode derives. A
-// nil coercion result writes a bare 500.
-//
-// It's exported so a custom writer can keep it as the fallback for errors it
-// doesn't recognise:
-//
-//	fallback := dflhttp.DefaultErrorWriter(nil)
-//	r := dflhttp.NewRouter(mux, dflhttp.WithErrorWriter(
-//	    func(w http.ResponseWriter, r *http.Request, err error) {
-//	        var myErr *myapp.Error
-//	        if errors.As(err, &myErr) {
-//	            writeMyError(w, myErr)
-//
-//	            return
-//	        }
-//
-//	        fallback(w, r, err)
-//	    }))
+// set: coerce with c (DefaultCoercer when c is nil) and write the
+// resulting *ReqError as JSON on the status its StatusCode derives; a nil
+// coercion writes a bare 500. Exported so a custom writer can keep it as
+// the fallback for errors it doesn't recognise.
 func DefaultErrorWriter(c Coercer) ErrorWriter {
 	if c == nil {
 		c = DefaultCoercer
@@ -256,16 +222,11 @@ func (r *Router) Use(mw ...Middleware) {
 	r.middleware = append(r.middleware, mw...)
 }
 
-// Handle registers a typed handler at method+path. The handler shape is
-// checked at compile time; bind setup walks the Req struct's tags once at
-// registration (via the Router's RequestParser) and panics on a malformed
-// Req.
-//
-// Convention in this codebase is that handlers take and return pointers
-// (func(ctx, *Req) (*Resp, error)) so the error path is just (nil, err)
-// and *Empty cleanly covers routes with no input or output. The framework
-// also accepts value Req/Resp shapes, but the pointer form is what every
-// example uses.
+// Handle registers a typed handler at method+path. Binding is planned from
+// Req's tags once, at registration, and a malformed Req panics here rather
+// than on the first request. Convention: pointer Req and Resp, so the
+// error path is (nil, err) and *Empty covers empty input or output; value
+// shapes work too.
 func (r *Router) Handle[Req, Resp any](method, path string, handler func(context.Context, Req) (Resp, error), mw ...Middleware) {
 	h, err := r.adapt(handler)
 	if err != nil {

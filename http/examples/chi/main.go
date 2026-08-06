@@ -1,7 +1,5 @@
-// Example program demonstrating dflhttp on a go-chi/chi router. The dflhttp
-// package itself has no awareness of chi: NewRouter accepts any mux that
-// satisfies MethodMux or PatternMux, and *chi.Mux satisfies MethodMux out
-// of the box.
+// Example program: the same API on a go-chi/chi router. dflhttp has no
+// awareness of chi; *chi.Mux simply satisfies MethodMux.
 //
 // Run:
 //
