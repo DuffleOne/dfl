@@ -18,6 +18,10 @@ import (
 const (
 	dateV1 = "2024-01-02"
 	dateV2 = "2024-06-01"
+
+	// dateBetween sits between the two variants, for pins that name no
+	// variant outright.
+	dateBetween = "2024-03-15"
 )
 
 // userV1 and userV2 are deliberately different response shapes: the point
@@ -100,7 +104,7 @@ func TestCompatibleServesNewestNotNewer(t *testing.T) {
 		want string
 	}{
 		{pin: dateV1, want: `{"name":"Ada Lovelace"}`},
-		{pin: "2024-03-15", want: `{"name":"Ada Lovelace"}`},
+		{pin: dateBetween, want: `{"name":"Ada Lovelace"}`},
 		{pin: dateV2, want: `{"first_name":"Ada","last_name":"Lovelace"}`},
 		{pin: "2025-01-01", want: `{"first_name":"Ada","last_name":"Lovelace"}`},
 	}
@@ -149,7 +153,7 @@ func TestExactMatchTakesNoNeighbours(t *testing.T) {
 		t.Errorf("exact pin: status = %d, want 200", rec.Code)
 	}
 
-	rec := get(t, h, "2024-03-15")
+	rec := get(t, h, dateBetween)
 
 	body := decodeErr(t, rec)
 	if rec.Code != http.StatusBadRequest || body.Code != "version_unsupported" {
@@ -264,6 +268,154 @@ func TestLatestIsRecordedOnTheContext(t *testing.T) {
 	}
 }
 
+// TestPreviewServesTheOverlay covers the preview pseudo-version: a
+// declared preview variant answers preview pins, an endpoint without one
+// falls back to its newest stable variant even under MatchExact, and the
+// literal stays invalid when AllowPreview is off.
+func TestPreviewServesTheOverlay(t *testing.T) {
+	type experimental struct {
+		Shiny bool `json:"shiny"`
+	}
+
+	previewEndpoint := func(declareOverlay bool, opts ...version.EndpointOption) http.Handler {
+		api := version.NewResolver(version.Dates(),
+			version.Header("X-API-Version"),
+		).AllowLatest("latest").AllowPreview("preview")
+
+		users := version.NewEndpoint(api, opts...)
+		version.Handle(users, dateV1, handleUserV1)
+		version.Handle(users, dateV2, handleUserV2)
+
+		if declareOverlay {
+			version.Handle(users, "preview", func(context.Context, *dflhttp.Empty) (*experimental, error) {
+				return &experimental{Shiny: true}, nil
+			})
+		}
+
+		r := dflhttp.NewRouter(http.NewServeMux())
+		r.HandleFunc(http.MethodGet, "/users", users.Serve)
+
+		return r
+	}
+
+	t.Run("declared overlay answers", func(t *testing.T) {
+		rec := get(t, previewEndpoint(true), "preview")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+		}
+
+		if got := strings.TrimSpace(rec.Body.String()); got != `{"shiny":true}` {
+			t.Errorf("body = %s, want the preview variant", got)
+		}
+	})
+
+	t.Run("no overlay falls back to newest, even under MatchExact", func(t *testing.T) {
+		rec := get(t, previewEndpoint(false, version.WithMatch(version.MatchExact)), "preview")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+		}
+
+		if got := strings.TrimSpace(rec.Body.String()); got != `{"first_name":"Ada","last_name":"Lovelace"}` {
+			t.Errorf("body = %s, want the newest stable variant", got)
+		}
+	})
+
+	t.Run("disabled by default", func(t *testing.T) {
+		rec := get(t, datedEndpoint(t), "preview")
+
+		body := decodeErr(t, rec)
+		if rec.Code != http.StatusBadRequest || body.Code != "version_invalid" {
+			t.Errorf("got %d %s, want 400 version_invalid", rec.Code, body.Code)
+		}
+	})
+
+	t.Run("duplicate overlay panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("expected a second preview declaration to panic")
+			}
+		}()
+
+		api := version.NewResolver(version.Dates(),
+			version.Header("X-API-Version"),
+		).AllowPreview("preview")
+
+		e := version.NewEndpoint(api)
+		e.HandleFunc("preview", func(http.ResponseWriter, *http.Request) error { return nil })
+		e.HandleFunc("preview", func(http.ResponseWriter, *http.Request) error { return nil })
+	})
+}
+
+// TestStatusHeaderReportsDispatch pins the StatusHeader contract: absent
+// unless enabled, absent on failures, and otherwise the channel plus the
+// served version whenever a dated variant answered.
+func TestStatusHeaderReportsDispatch(t *testing.T) {
+	build := func(opts ...version.EndpointOption) http.Handler {
+		api := version.NewResolver(version.Dates(),
+			version.Header("X-API-Version"),
+		).AllowLatest("latest").AllowPreview("preview").StatusHeader("Infra-Endpoint-Status")
+
+		users := version.NewEndpoint(api, opts...)
+		version.Handle(users, dateV1, handleUserV1)
+		version.Handle(users, dateV2, handleUserV2)
+
+		r := dflhttp.NewRouter(http.NewServeMux())
+		r.HandleFunc(http.MethodGet, "/users", users.Serve)
+
+		return r
+	}
+
+	tests := []struct {
+		pin  string
+		want string
+	}{
+		{pin: dateV1, want: "stable; version=" + dateV1},
+		{pin: "2024-03-15", want: "stable; version=" + dateV1},
+		{pin: "latest", want: "latest; version=" + dateV2},
+		{pin: "preview", want: "preview; version=" + dateV2},
+	}
+
+	h := build()
+	for _, tt := range tests {
+		rec := get(t, h, tt.pin)
+		if got := rec.Header().Get("Infra-Endpoint-Status"); got != tt.want {
+			t.Errorf("pin %s: header = %q, want %q", tt.pin, got, tt.want)
+		}
+	}
+
+	t.Run("bare channel when the overlay answers", func(t *testing.T) {
+		api := version.NewResolver(version.Dates(),
+			version.Header("X-API-Version"),
+		).AllowPreview("preview").StatusHeader("Infra-Endpoint-Status")
+
+		e := version.NewEndpoint(api)
+		version.Handle(e, dateV1, handleUserV1)
+		version.Handle(e, "preview", handleUserV2)
+
+		r := dflhttp.NewRouter(http.NewServeMux())
+		r.HandleFunc(http.MethodGet, "/users", e.Serve)
+
+		rec := get(t, r, "preview")
+		if got := rec.Header().Get("Infra-Endpoint-Status"); got != "preview" {
+			t.Errorf("header = %q, want bare preview", got)
+		}
+	})
+
+	t.Run("absent on failure", func(t *testing.T) {
+		rec := get(t, build(), "2020-01-01")
+		if got := rec.Header().Get("Infra-Endpoint-Status"); got != "" {
+			t.Errorf("header = %q, want none on version_unsupported", got)
+		}
+	})
+
+	t.Run("absent unless enabled", func(t *testing.T) {
+		rec := get(t, datedEndpoint(t), dateV1)
+		if got := rec.Header().Get("Infra-Endpoint-Status"); got != "" {
+			t.Errorf("header = %q, want none by default", got)
+		}
+	})
+}
+
 // TestMissingAndInvalidFlowThroughTheRouter checks resolver failures come
 // out of the Router's error pipeline as dfl's wire shape.
 func TestMissingAndInvalidFlowThroughTheRouter(t *testing.T) {
@@ -306,7 +458,7 @@ func TestResolvedIsOnTheContext(t *testing.T) {
 	r := dflhttp.NewRouter(http.NewServeMux())
 	r.HandleFunc(http.MethodGet, "/users", e.Serve)
 
-	rec := get(t, r, "2024-03-15")
+	rec := get(t, r, dateBetween)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
@@ -316,7 +468,7 @@ func TestResolvedIsOnTheContext(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	if info.Requested != "2024-03-15" || info.Served != dateV1 {
+	if info.Requested != dateBetween || info.Served != dateV1 {
 		t.Errorf("resolved = %+v, want requested 2024-03-15 served %s", info, dateV1)
 	}
 }

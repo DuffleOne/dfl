@@ -67,7 +67,8 @@ type variant[V any] struct {
 type Endpoint[V any] struct {
 	resolver *Resolver[V]
 	config   endpointConfig
-	variants []variant[V] // ascending by the resolver scheme's order
+	variants []variant[V]        // ascending by the resolver scheme's order
+	preview  dflhttp.HandlerFunc // the experimental overlay, nil when none
 }
 
 // NewEndpoint builds an empty Endpoint dispatching through resolver. It
@@ -110,7 +111,21 @@ func Handle[V, Req, Resp any](e *Endpoint[V], raw string, handler func(context.C
 // HandleFunc registers a raw HandlerFunc as the variant at version raw,
 // for variants the typed model doesn't fit; it mirrors Router.HandleFunc.
 // It panics on a version the scheme can't parse or a duplicate version.
+//
+// When raw is a preview literal (Resolver.AllowPreview), the handler
+// becomes the endpoint's preview variant instead of a dated one; at most
+// one may be declared.
 func (e *Endpoint[V]) HandleFunc(raw string, h dflhttp.HandlerFunc) {
+	if slices.Contains(e.resolver.preview, raw) {
+		if e.preview != nil {
+			panic("dflhttp/version: duplicate preview variant")
+		}
+
+		e.preview = h
+
+		return
+	}
+
 	v, err := e.resolver.scheme.Parse(raw)
 	if err != nil {
 		panic(fmt.Sprintf("dflhttp/version: bad version %q: %v", raw, err))
@@ -132,44 +147,93 @@ func (e *Endpoint[V]) HandleFunc(raw string, h dflhttp.HandlerFunc) {
 //	r.HandleFunc(http.MethodGet, "/users", users.Serve)
 //
 // A request pinned to a latest literal (Resolver.AllowLatest) is served
-// by the newest registered variant, whatever the Match rule.
+// by the newest registered variant, whatever the Match rule. One pinned
+// to a preview literal (Resolver.AllowPreview) is served by the preview
+// variant when declared, and by the newest variant otherwise.
 //
 // Failures return *dflhttp.ReqError values (see the package errors), so
 // they flow through the Router's usual error pipeline. Serving an
 // Endpoint with no variants is a 500 version_unconfigured.
 func (e *Endpoint[V]) Serve(w http.ResponseWriter, r *http.Request) error {
-	if len(e.variants) == 0 {
+	if len(e.variants) == 0 && e.preview == nil {
 		return dflhttp.New(http.StatusInternalServerError, "version_unconfigured", nil)
 	}
 
 	requested, err := e.resolver.Resolve(r)
 
-	latest := errors.Is(err, ErrLatest)
-	if err != nil && !latest {
+	var latest, preview bool
+
+	switch {
+	case errors.Is(err, ErrLatest):
+		latest = true
+	case errors.Is(err, ErrPreview):
+		preview = true
+	case err != nil:
 		return err
 	}
 
-	var chosen variant[V]
+	var (
+		chosen variant[V]
+		dated  = true
+	)
 
-	if latest {
+	switch {
+	case preview && e.preview != nil:
+		// The preview variant has no version of its own: chosen keeps the
+		// zero V and only the flag travels.
+		chosen.handle = e.preview
+		dated = false
+	case latest || preview:
+		if len(e.variants) == 0 {
+			return e.unsupported(channel(latest, preview))
+		}
+
 		chosen = e.variants[len(e.variants)-1]
 		requested = chosen.version
-	} else {
+	default:
 		var ok bool
 
 		chosen, ok = e.pick(requested)
 		if !ok {
-			return dflhttp.Wrap(ErrUnsupported, http.StatusBadRequest, "version_unsupported", dflhttp.M{
-				"version":   e.resolver.scheme.Format(requested),
-				"supported": e.supported(),
-			})
+			return e.unsupported(e.resolver.scheme.Format(requested))
 		}
 	}
 
-	resolved := Resolved[V]{Requested: requested, Served: chosen.version, Latest: latest}
+	if name := e.resolver.statusHeader; name != "" {
+		value := channel(latest, preview)
+		if dated {
+			value += "; version=" + e.resolver.scheme.Format(chosen.version)
+		}
+
+		w.Header().Set(name, value)
+	}
+
+	resolved := Resolved[V]{Requested: requested, Served: chosen.version, Latest: latest, Preview: preview}
 	r = r.WithContext(context.WithValue(r.Context(), resolvedKey{}, resolved))
 
 	return chosen.handle(w, r)
+}
+
+// unsupported builds the 400 version_unsupported ReqError, naming what the
+// request asked for and every version that would have worked.
+func (e *Endpoint[V]) unsupported(asked string) error {
+	return dflhttp.Wrap(ErrUnsupported, http.StatusBadRequest, "version_unsupported", dflhttp.M{
+		"version":   asked,
+		"supported": e.supported(),
+	})
+}
+
+// channel names the dispatch channel a request asked for, for the status
+// header and error metadata. The zero case is a concrete pin: "stable".
+func channel(latest, preview bool) string {
+	switch {
+	case preview:
+		return "preview"
+	case latest:
+		return "latest"
+	default:
+		return "stable"
+	}
 }
 
 // pick applies the Match rule to an already-resolved version.

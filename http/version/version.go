@@ -41,6 +41,11 @@
 // Together they reproduce the fully explicit model: every version an
 // endpoint exists at is declared, nothing carries between versions, and
 // "latest" is the one moving pointer.
+//
+// Resolver.AllowPreview layers an experimental overlay on top: a preview
+// pin is served by an endpoint's preview variant when one is declared,
+// and by the newest variant otherwise. Resolver.StatusHeader names a
+// response header reporting the channel and version that answered.
 package version
 
 import (

@@ -173,10 +173,11 @@ func TestResolveLatestReturnsBareSentinel(t *testing.T) {
 	}
 }
 
-// TestAllowLatestPanicsOnMisconfiguration pins the wiring checks: an empty
-// call, a blank or padded literal, a duplicate, and a literal the scheme
-// would parse as a real version all panic at startup.
-func TestAllowLatestPanicsOnMisconfiguration(t *testing.T) {
+// TestResolverWiringPanics pins the fail-fast checks on AllowLatest,
+// AllowPreview, and StatusHeader: empty calls, blank or padded literals,
+// duplicates within or across channels, literals the scheme would parse
+// as real versions, and header renames all panic at startup.
+func TestResolverWiringPanics(t *testing.T) {
 	expectPanic := func(t *testing.T, name string, wire func()) {
 		t.Helper()
 
@@ -204,6 +205,39 @@ func TestAllowLatestPanicsOnMisconfiguration(t *testing.T) {
 	expectPanic(t, "a literal the scheme parses", func() {
 		version.NewResolver(version.Sequential(), version.Query("v")).AllowLatest("v2")
 	})
+
+	expectPanic(t, "a literal enabled for both channels", func() {
+		datedResolver(version.Header("X-API-Version")).AllowLatest("edge").AllowPreview("edge")
+	})
+
+	expectPanic(t, "a blank status header", func() {
+		datedResolver(version.Header("X-API-Version")).StatusHeader(" ")
+	})
+
+	expectPanic(t, "renaming the status header", func() {
+		datedResolver(version.Header("X-API-Version")).
+			StatusHeader("Infra-Endpoint-Status").
+			StatusHeader("X-Endpoint-Status")
+	})
+}
+
+// TestResolvePreviewReturnsBareSentinel mirrors the latest check: an
+// enabled preview literal surfaces as ErrPreview itself, not a ReqError.
+func TestResolvePreviewReturnsBareSentinel(t *testing.T) {
+	rv := datedResolver(version.Header("X-API-Version")).AllowPreview("preview")
+
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("X-API-Version", "preview")
+
+	_, err := rv.Resolve(r)
+	if !errors.Is(err, version.ErrPreview) {
+		t.Fatalf("err = %v, want ErrPreview", err)
+	}
+
+	var reqErr *dflhttp.ReqError
+	if errors.As(err, &reqErr) {
+		t.Errorf("ErrPreview should not be a *dflhttp.ReqError, got %v", reqErr)
+	}
 }
 
 // TestNewResolverPanicsOnMisconfiguration pins the fail-fast contract: a

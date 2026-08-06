@@ -33,6 +33,12 @@ var (
 	// a *dflhttp.ReqError, so if it ever reaches a Router unhandled it
 	// falls through as a 500 rather than masquerading as a client error.
 	ErrLatest = errors.New("version: request pinned latest")
+
+	// ErrPreview: the request pinned a preview literal enabled with
+	// AllowPreview. Like ErrLatest it is an outcome, not a failure:
+	// Endpoint.Serve dispatches to the preview variant, or to the newest
+	// stable one when the endpoint has no preview.
+	ErrPreview = errors.New("version: request pinned preview")
 )
 
 // Resolver owns the two pluggable halves of versioning: the Scheme that
@@ -40,9 +46,11 @@ var (
 // version travels. Build one per API and share it across every Endpoint,
 // so the whole surface negotiates versions the same way.
 type Resolver[V any] struct {
-	scheme  Scheme[V]
-	sources []Source
-	latest  []string
+	scheme       Scheme[V]
+	sources      []Source
+	latest       []string
+	preview      []string
+	statusHeader string
 }
 
 // NewResolver builds a Resolver from a scheme and an ordered list of
@@ -73,25 +81,61 @@ func NewResolver[V any](scheme Scheme[V], sources ...Source) *Resolver[V] {
 // a blank literal, and a duplicate. Calls accumulate and belong in wiring,
 // before traffic; it returns the resolver so it can chain off NewResolver.
 func (rv *Resolver[V]) AllowLatest(literals ...string) *Resolver[V] {
+	return rv.allowLiterals("latest", &rv.latest, literals)
+}
+
+// AllowPreview teaches the resolver request literals for the experimental
+// overlay. A request pinned to preview is served by the endpoint's preview
+// variant when one is declared, and by the newest stable variant
+// otherwise, so preview clients follow latest wherever nothing
+// experimental is going on. The same literals are how a preview variant is
+// declared: Handle(e, "preview", handler). The literal rules match
+// AllowLatest's, and a literal can't be both latest and preview.
+func (rv *Resolver[V]) AllowPreview(literals ...string) *Resolver[V] {
+	return rv.allowLiterals("preview", &rv.preview, literals)
+}
+
+func (rv *Resolver[V]) allowLiterals(kind string, dst *[]string, literals []string) *Resolver[V] {
 	if len(literals) == 0 {
-		panic("dflhttp/version: AllowLatest needs at least one literal")
+		panic("dflhttp/version: enable at least one " + kind + " literal")
 	}
 
 	for _, l := range literals {
 		if strings.TrimSpace(l) != l || l == "" {
-			panic(fmt.Sprintf("dflhttp/version: blank or padded latest literal %q", l))
+			panic(fmt.Sprintf("dflhttp/version: blank or padded %s literal %q", kind, l))
 		}
 
-		if slices.Contains(rv.latest, l) {
-			panic("dflhttp/version: duplicate latest literal " + l)
+		if slices.Contains(rv.latest, l) || slices.Contains(rv.preview, l) {
+			panic(fmt.Sprintf("dflhttp/version: literal %q is already enabled", l))
 		}
 
 		if _, err := rv.scheme.Parse(l); err == nil {
-			panic(fmt.Sprintf("dflhttp/version: latest literal %q would shadow a version the scheme parses", l))
+			panic(fmt.Sprintf("dflhttp/version: %s literal %q would shadow a version the scheme parses", kind, l))
 		}
 
-		rv.latest = append(rv.latest, l)
+		*dst = append(*dst, l)
 	}
+
+	return rv
+}
+
+// StatusHeader names a response header for Endpoint.Serve to report how
+// dispatch went: "stable", "latest", or "preview" for the channel the
+// request asked for, plus the served variant's version when a dated one
+// answered, e.g. "stable; version=2024-06-01". Informational, for the
+// engineer reading the response rather than anything parsing it; crpc
+// callers will recognise "Infra-Endpoint-Status". Off unless set, and set
+// once: naming a second header panics.
+func (rv *Resolver[V]) StatusHeader(name string) *Resolver[V] {
+	if strings.TrimSpace(name) == "" {
+		panic("dflhttp/version: StatusHeader needs a header name")
+	}
+
+	if rv.statusHeader != "" {
+		panic("dflhttp/version: StatusHeader is already set to " + rv.statusHeader)
+	}
+
+	rv.statusHeader = name
 
 	return rv
 }
@@ -102,7 +146,8 @@ func (rv *Resolver[V]) AllowLatest(literals ...string) *Resolver[V] {
 // source, because a garbled explicit version should be loud rather than
 // silently defaulted. Values are trimmed of surrounding whitespace, and
 // a whitespace-only value counts as a miss. A value matching an
-// AllowLatest literal returns ErrLatest, bare, for the caller to act on.
+// AllowLatest or AllowPreview literal returns ErrLatest or ErrPreview,
+// bare, for the caller to act on.
 //
 // Errors are otherwise *dflhttp.ReqError values carrying ErrMissing or
 // ErrInvalid as causes, so they can go straight back through a Router's
@@ -124,6 +169,10 @@ func (rv *Resolver[V]) Resolve(r *http.Request) (V, error) {
 
 		if slices.Contains(rv.latest, raw) {
 			return zero, ErrLatest
+		}
+
+		if slices.Contains(rv.preview, raw) {
+			return zero, ErrPreview
 		}
 
 		v, err := rv.scheme.Parse(raw)

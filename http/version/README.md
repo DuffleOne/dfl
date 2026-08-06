@@ -179,6 +179,51 @@ For custom dispatch built on the resolution half alone: `Resolve` returns
 the bare sentinel `ErrLatest` for an enabled literal, and picking the
 variant is yours to do.
 
+## The preview overlay
+
+`AllowPreview` names literals for the experimental channel, and the same
+literal is how a preview variant is declared:
+
+```go
+api := version.NewResolver(version.Dates(),
+    version.Header("X-API-Version"),
+).AllowLatest("latest").AllowPreview("preview")
+
+users := version.NewEndpoint(api)
+version.Handle(users, "2024-06-01", listUsersV2)
+version.Handle(users, "preview", listUsersNext) // at most one per endpoint
+```
+
+A request pinned `preview` is served by the preview variant. On endpoints
+that don't declare one it falls back to the newest stable variant, even
+under `MatchExact`, so a preview client follows latest wherever nothing
+experimental is going on. Withdrawing an experiment is deleting the
+variant; shipping it is registering the same handler at the date it went
+stable.
+
+Inside a handler, `Resolved.Preview` reports the ask. When the overlay
+itself answered there is no version to name, so `Requested` and `Served`
+stay the zero `V`. `Resolve` surfaces the ask as the bare sentinel
+`ErrPreview`, mirroring `ErrLatest`.
+
+## Reporting what answered
+
+`StatusHeader` names a response header for `Serve` to set on successful
+dispatch, in the spirit of crpc's `Infra-Endpoint-Status`:
+
+```go
+api := version.NewResolver(version.Dates(),
+    version.Header("X-API-Version"),
+).AllowLatest("latest").StatusHeader("Infra-Endpoint-Status")
+```
+
+The value is the channel the request asked for plus the version that
+answered, when a dated variant did: `stable; version=2024-06-01`,
+`latest; version=2024-06-01`, or a bare `preview` when the overlay ran.
+It's informational, for an engineer eyeballing a response; nothing should
+parse it. Off unless named, and absent on failures, which have their own
+wire shape.
+
 ## Errors
 
 Failures return `*dflhttp.ReqError` values, so the wire shape is dfl's
@@ -204,6 +249,7 @@ func listUsersV1(ctx context.Context, req *ListUsersReq) (*ListUsersResp, error)
     // resolved.Requested: the client's pin, after any Default
     // resolved.Served: this variant's version, older under MatchCompatible
     // resolved.Latest: the client asked for latest, not a concrete pin
+    // resolved.Preview: the client asked for the preview overlay
 }
 ```
 
