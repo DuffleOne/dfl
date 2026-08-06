@@ -6,15 +6,12 @@ import (
 	"strings"
 )
 
-// EventError is the canonical events error type, the bus analog of the http
-// package's ReqError. Code, Event, and Meta are serialised on the wire; the
-// causes attached by New and Wrap are internal, traversed by errors.Is and
-// errors.As.
-//
-// There's no status here: a bus has no HTTP status to carry. The Event field
-// names the event the error relates to and is stamped by the bus when it has
-// the name. RegisterEndpoint decides the status from Code when it projects an
-// EventError back onto a ReqError.
+// EventError is the canonical events error type, the bus analog of
+// ReqError: Code, Event, and Meta serialise, causes stay internal for
+// errors.Is and errors.As. There's no status, a bus having none to carry;
+// RegisterEndpoint decides one from Code when projecting an EventError
+// back onto a ReqError. Event names the event concerned, stamped by the
+// bus when it has the name.
 type EventError struct {
 	Code  string `json:"code"`
 	Event string `json:"event,omitempty"`
@@ -64,16 +61,19 @@ func (e *EventError) Unwrap() []error {
 	return e.causes
 }
 
-// withEvent returns e with Event set to name if it wasn't already set. Used by
-// the bus to stamp the event name onto an error on its way out.
+// withEvent returns e with Event set to name if it wasn't already. It
+// copies rather than mutates, as ReqError's With* methods do: handlers
+// return package-level sentinels (NotFound, say), and stamping a shared
+// value would race deliveries and leak one event's name into another's.
 func (e *EventError) withEvent(name string) *EventError {
 	if e == nil || e.Event != "" {
 		return e
 	}
 
-	e.Event = name
+	out := *e
+	out.Event = name
 
-	return e
+	return &out
 }
 
 // DefaultCoercer is the minimal Coercer: it returns *EventError as-is (via

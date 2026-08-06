@@ -114,14 +114,17 @@ func (u *Users) handleCreate(ctx context.Context, req *CreateUserReq) (*store.Us
 		return nil, dflhttp.New("validation_failed", dflhttp.M{"fields": fields})
 	}
 
-	user, err := u.store.Create(ctx, req.Name, req.Email)
-	if err != nil {
-		return nil, err // the coercer picks it up below
-	}
+	// Emit before the write, and mint the id here so the event can name the
+	// user before the row exists. Consumers that arrive early retry until it
+	// does. See "Emitting and transactions".
+	user := store.User{ID: newID(), Name: req.Name, Email: req.Email}
 
-	// Emit after the write is committed. See "Emitting and transactions".
 	if err := u.bus.Emit(ctx, apievents.UserCreated{ID: user.ID, Email: user.Email}); err != nil {
 		return nil, err
+	}
+
+	if err := u.store.Create(ctx, user); err != nil {
+		return nil, err // the coercer picks it up below
 	}
 
 	return &user, nil
@@ -196,18 +199,117 @@ registered afterwards. The same goes for `r.Use` and routes.
 
 ## Emitting and transactions
 
-`handleCreate` emits after `store.Create` returns, which is after the
-insert committed. Resist the pull to emit from inside a `TxCtx` closure: the
-publish would happen before the commit, so a rollback would leave you having
-announced a user that doesn't exist. The reverse failure mode still exists
-(commit succeeds, emit fails, client gets an error for work that happened),
-which is inherent to two systems without a shared log.
+Two systems, no shared log, so something has to give. Order the write and the
+emit either way and one of them can happen without the other.
 
-When that window matters, the fix is an outbox: insert the envelope into an
-outbox table inside the transaction, and run a relay that reads the table
-and publishes through the bus. The `Sink` interface is deliberately small so
-an outbox relay can stand behind it; the bus doesn't care that publishes are
-deferred.
+`handleCreate` emits first, before the transaction that writes the user. That
+sounds backwards, and the reason it works is on the consuming side: a
+consumer that looks for a user and doesn't find one hasn't failed, it's early.
+So it waits and looks again.
+
+```go
+bus.Use(events.Retry(events.RetryPolicy{}))
+```
+
+```go
+bus.On(func(ctx context.Context, e apievents.UserCreated) error {
+	user, err := store.Get(ctx, e.ID)
+	if errors.Is(err, pgxdb.NotFound) {
+		return events.NotFound // retried, with backoff
+	}
+	// ...
+})
+```
+
+Three attempts by default, backing off 50ms then 100ms, and only on
+not-found: a genuine bug still fails once rather than three times. See
+[the retry guide](../events/README.md#arriving-early) for the knobs.
+
+Emitting first means minting the id yourself rather than letting the database
+do it, since the event has to name the user before the row exists:
+
+```go
+user := store.User{ID: newID(), Name: req.Name, Email: req.Email}
+
+if err := u.bus.Emit(ctx, apievents.UserCreated{ID: user.ID, Email: user.Email}); err != nil {
+	return nil, err
+}
+
+if err := u.store.Create(ctx, user); err != nil {
+	return nil, err
+}
+```
+
+### When the retries run out
+
+If the user still isn't there after the last attempt, the write didn't just
+lag, it didn't happen: the transaction rolled back, or the process died
+between the emit and the commit. The event describes something that doesn't
+exist and never will, and no amount of further waiting fixes it. Choose what
+happens to it:
+
+| `Exhausted`                   | What it does                                          |
+| ----------------------------- | ----------------------------------------------------- |
+| `events.Nack` (default)       | Logs, hands the error to the sink, and lets the transport's own redrive policy decide |
+| `events.DeadLetter(park)`     | Logs, hands the envelope to `park`, and acks           |
+| `events.Drop`                 | Logs and acks. The event is gone                       |
+
+```go
+bus.Use(events.Retry(events.RetryPolicy{
+	Attempts:  3,
+	Exhausted: events.DeadLetter(parkForReview),
+}))
+```
+
+`Drop` is right for an advisory event (invalidate a cache, refresh a
+projection) where a lost one costs nothing. `DeadLetter` is right when
+somebody needs to look at it, which is most of the time. `Nack` is right when
+you're on SQS or Pub/Sub and their dead-letter machinery already has an
+answer you don't want to overrule.
+
+### The real fix is an outbox
+
+Retries and a dead-letter queue make the failure survivable, not impossible.
+The event still went out for work that never happened, and everything
+downstream that reacted to it, an email, a charge, a projection, has to be
+unwound by hand.
+
+The fix that removes the failure rather than absorbing it is a transactional
+outbox: write the event into a table on the same transaction as the business
+data, and have a relay move rows from that table onto the real transport
+after the commit. A rollback takes the event with it, and a commit guarantees
+it goes out. No phantom events, no lost ones, and no need to mint ids early.
+
+```go
+outbox := newOutboxSink(db, sqsSink)   // Publish writes a row; Subscribe forwards
+bus := events.NewBus(outbox)
+
+go outbox.Relay(ctx, 100*time.Millisecond, 50)
+
+db.TxCtx(ctx, func(ctx context.Context) error {
+	id, err := store.Create(ctx, req.Name, req.Email)
+	if err != nil {
+		return err
+	}
+
+	// Lands in the outbox table on this same transaction.
+	return bus.Emit(ctx, apievents.UserCreated{ID: id, Email: req.Email})
+})
+```
+
+`Sink` is deliberately small so this fits behind it, and `pgxdb.GetQuerier`
+is what makes it work: called inside a `TxCtx` block it hands back the
+running transaction, so the insert joins it without the sink knowing whether
+there was one.
+
+What it costs you: a table and a relay to run, and at-least-once delivery
+rather than exactly-once, since a publish that succeeds before the marking
+commit fails will go out twice. Consumers have to tolerate duplicates. That's
+a much easier property to design for than phantom events.
+
+[`events/examples/outbox`](../events/examples/outbox) is the whole thing
+working: the sink, the relay, a committed write whose event arrives, and a
+rolled back one whose event never does.
 
 ## Testing
 

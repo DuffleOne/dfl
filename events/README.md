@@ -108,6 +108,111 @@ Where errors surface depends on the path:
 - `On` handler failures reach the `ErrorHandler`, and the sink (for nack).
 - `RegisterEndpoint` failures become the HTTP response.
 
+## Arriving early
+
+A consumer can beat the write it depends on. The producer emits, the
+transport delivers, and the transaction that writes the row the event names
+hasn't committed yet, so the handler looks for something that isn't there.
+That isn't a failure, it's an ordering, and the answer is to wait and look
+again:
+
+```go
+bus.Use(events.Retry(events.RetryPolicy{}))
+
+bus.On(func(ctx context.Context, e UserCreated) error {
+    user, err := store.Get(ctx, e.ID)
+    if errors.Is(err, pgxdb.NotFound) {
+        return events.NotFound
+    }
+    // ...
+})
+```
+
+The zero policy is three attempts, backing off 50ms then 100ms, retrying
+only on not-found and handing the error back to the sink if they run out.
+Signal not-found by returning `events.NotFound`, wrapping it, or building
+your own with the same code and some meta:
+
+```go
+return events.New("not_found", events.M{"user_id": e.ID})
+```
+
+Everything is swappable:
+
+```go
+bus.Use(events.Retry(events.RetryPolicy{
+    Attempts:  5,
+    Backoff:   events.ExponentialBackoff(200 * time.Millisecond),
+    Retryable: func(err error) bool { return errors.Is(err, pgxdb.NotFound) },
+    Exhausted: events.DeadLetter(parkForReview),
+}))
+```
+
+`Retryable` defaults to `events.IsNotFound` rather than "any error" on
+purpose. Retrying a genuine bug just makes it happen three times.
+
+### When the attempts run out
+
+`Exhausted` decides. It's a plain func, so a service with its own idea (park
+it in a table, page someone, emit a compensating event) writes one; three
+come with the package:
+
+| `Exhausted`               | What it does                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------- |
+| `events.Nack` (default)   | Logs, returns the error to the sink, and lets the transport's redrive policy decide     |
+| `events.DeadLetter(park)` | Logs, hands the envelope to `park`, and acks. A failing `park` nacks instead of losing it |
+| `events.Drop`             | Logs and acks. The event is gone                                                        |
+
+`Drop` suits an advisory event where a lost one costs nothing. `DeadLetter`
+suits anything somebody needs to look at. `Nack` is the default because a
+durable transport usually has its own answer already, and in-process retries
+shouldn't quietly overrule an SQS redrive policy or a Pub/Sub dead-letter
+topic.
+
+One constraint: the waiting happens inside the delivery, so it holds the
+message's lease. Keep the sum of the backoffs well under an SQS visibility
+timeout or a Pub/Sub ack deadline, or the transport redelivers underneath
+you and the work runs twice.
+
+### Or don't race at all
+
+Retries make an early arrival survivable. They don't help when the write
+never lands, because the transaction rolled back: then the event describes
+something that will never exist, and the best available outcome is a
+dead-letter queue and somebody's afternoon.
+
+A transactional outbox removes the race instead of absorbing it. `Publish`
+writes the event into a table on the caller's transaction and a relay moves
+rows onto the real transport after the commit, so a rollback takes the event
+with it and a commit guarantees it goes out:
+
+```go
+outbox := newOutboxSink(db, sqsSink)   // Publish writes a row; Subscribe forwards
+bus := events.NewBus(outbox)
+
+go outbox.Relay(ctx, 100*time.Millisecond, 50)
+
+db.TxCtx(ctx, func(ctx context.Context) error {
+    id, err := store.Create(ctx, name, email)
+    if err != nil {
+        return err
+    }
+
+    return bus.Emit(ctx, UserCreated{ID: id, Email: email})
+})
+```
+
+`Sink` is small enough to sit in front of another one, and
+[`pgxdb.GetQuerier`](../db/pgxdb) is what makes the transactional part work:
+inside a `TxCtx` block it hands back the running transaction, so the insert
+joins it without the sink knowing there was one. The cost is a table, a
+relay to run, and at-least-once delivery, since a publish that succeeds
+before its marking commit fails goes out twice.
+
+[`examples/outbox`](./examples/outbox) is the whole thing: sink, relay, a
+committed write whose event arrives, and a rolled back one whose event never
+does.
+
 ## Middleware and plugins
 
 Consume-side middleware wraps delivery, with the same onion composition as
@@ -186,4 +291,5 @@ directly from their tests, as `mem_test.go` does.
 - [`examples/app`](./examples/app): the same handlers wired in-process and over HTTP
 - [`examples/middleware`](./examples/middleware): logging and recovery middleware, a custom validator, a custom error handler
 - [`examples/plugin`](./examples/plugin): a from-scratch plugin using envelope headers
+- [`examples/outbox`](./examples/outbox): a transactional outbox sink and relay on `pgxdb`
 - [`otel/examples/trace`](./otel/examples/trace): end-to-end tracing with a stdout exporter
