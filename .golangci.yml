@@ -1,5 +1,16 @@
 version: "2"
 
+# Linting a submodule (events/aws and friends) can fail with a bogus
+# typecheck error after a root-module edit, e.g. "rg.Handle undefined:
+# *Router has no field or method Handle". With a warm cache golangci-lint
+# typechecks the edited root packages from source but loads their
+# unchanged dependencies from export data, and the x/tools importer it
+# vendors can't yet read a generic method (one carrying its own type
+# parameters, like Router.Handle) out of export data. The same lag is why
+# version.Handle is a package function rather than an Endpoint method.
+# go build, go vet, and a cold-cache run are all fine, so when it bites:
+# golangci-lint cache clean, then rerun.
+
 linters:
   default: none
   enable:
