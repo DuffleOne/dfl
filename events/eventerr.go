@@ -7,43 +7,45 @@ import (
 )
 
 // EventError is the canonical events error type, the bus analog of the http
-// package's ReqError. Code, Event, and Meta are serialised on the wire; Reasons
-// is internal-only, traversed by errors.Is and errors.As.
+// package's ReqError. Code, Event, and Meta are serialised on the wire; the
+// causes attached by New and Wrap are internal, traversed by errors.Is and
+// errors.As.
 //
 // Unlike ReqError there's no StatusCode: a bus has no HTTP status to carry. The
 // Event field names the event the error relates to and is stamped by the bus
 // when it has the name. RegisterEndpoint maps Code to an HTTP status when it
 // projects an EventError back onto a ReqError.
 type EventError struct {
-	Code    string  `json:"code"`
-	Event   string  `json:"event,omitempty"`
-	Meta    M       `json:"meta,omitempty"`
-	Reasons []error `json:"-"`
+	Code  string `json:"code"`
+	Event string `json:"event,omitempty"`
+	Meta  M      `json:"meta,omitempty"`
+
+	causes []error
 }
 
 var _ error = (*EventError)(nil)
 
-// New builds an EventError. reasons (if any) are recorded for errors.Is and
-// errors.As traversal.
-func New(code string, meta M, reasons ...error) *EventError {
+// New builds an EventError. causes (if any) are recorded for errors.Is and
+// errors.As traversal and stay off the wire.
+func New(code string, meta M, causes ...error) *EventError {
 	return &EventError{
-		Code:    code,
-		Meta:    meta,
-		Reasons: reasons,
+		Code:   code,
+		Meta:   meta,
+		causes: causes,
 	}
 }
 
 // Wrap builds an EventError that wraps err as its primary cause. Additional
-// reasons are recorded after.
-func Wrap(err error, code string, meta M, reasons ...error) *EventError {
-	all := make([]error, 0, 1+len(reasons))
+// causes are recorded after.
+func Wrap(err error, code string, meta M, causes ...error) *EventError {
+	all := make([]error, 0, 1+len(causes))
 	all = append(all, err)
-	all = append(all, reasons...)
+	all = append(all, causes...)
 
 	return &EventError{
-		Code:    code,
-		Meta:    meta,
-		Reasons: all,
+		Code:   code,
+		Meta:   meta,
+		causes: all,
 	}
 }
 
@@ -55,13 +57,11 @@ func (e *EventError) Error() string {
 	return fmt.Sprintf("%s keys=%s", e.Code, strings.Join(e.Meta.Keys(), ", "))
 }
 
-// Unwrap returns the primary cause for single-step traversal via errors.Unwrap.
-func (e *EventError) Unwrap() error {
-	if len(e.Reasons) == 0 {
-		return nil
-	}
-
-	return e.Reasons[0]
+// Unwrap returns every cause, so errors.Is and errors.As traverse the whole
+// set, not just the first. Note this is the multi-error form: errors.Unwrap,
+// which only knows the single-error one, returns nil on an EventError.
+func (e *EventError) Unwrap() []error {
+	return e.causes
 }
 
 // withEvent returns e with Event set to name if it wasn't already set. Used by

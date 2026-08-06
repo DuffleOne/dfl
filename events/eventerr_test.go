@@ -47,8 +47,8 @@ func TestEventErrorNew(t *testing.T) {
 		t.Errorf("Meta[x] = %v, want 1", got)
 	}
 
-	if !slices.Equal(e.Reasons, []error{cause}) {
-		t.Errorf("Reasons = %v, want [cause]", e.Reasons)
+	if !slices.Equal(e.Unwrap(), []error{cause}) {
+		t.Errorf("Unwrap() = %v, want [cause]", e.Unwrap())
 	}
 }
 
@@ -58,12 +58,8 @@ func TestEventErrorWrap(t *testing.T) {
 
 	e := events.Wrap(primary, "boom", nil, secondary)
 
-	if len(e.Reasons) != 2 {
-		t.Fatalf("Reasons len = %d, want 2", len(e.Reasons))
-	}
-
-	if e.Reasons[0] != primary {
-		t.Errorf("Reasons[0] = %v, want primary", e.Reasons[0])
+	if !slices.Equal(e.Unwrap(), []error{primary, secondary}) {
+		t.Errorf("Unwrap() = %v, want [primary, secondary]", e.Unwrap())
 	}
 
 	if !errors.Is(e, primary) {
@@ -72,26 +68,28 @@ func TestEventErrorWrap(t *testing.T) {
 }
 
 func TestEventErrorUnwrap(t *testing.T) {
-	t.Run("nil when no reasons", func(t *testing.T) {
+	t.Run("nil when no causes", func(t *testing.T) {
 		if got := events.New("x", nil).Unwrap(); got != nil {
 			t.Errorf("Unwrap() = %v, want nil", got)
 		}
 	})
 
-	t.Run("first reason otherwise", func(t *testing.T) {
+	t.Run("every cause otherwise", func(t *testing.T) {
 		first := errors.New("first")
+		second := errors.New("second")
 
-		if got := events.New("x", nil, first, errors.New("second")).Unwrap(); got != first {
-			t.Errorf("Unwrap() = %v, want first", got)
+		if got := events.New("x", nil, first, second).Unwrap(); !slices.Equal(got, []error{first, second}) {
+			t.Errorf("Unwrap() = %v, want [first, second]", got)
 		}
 	})
 
-	t.Run("errors.Is walks transitively", func(t *testing.T) {
+	t.Run("errors.Is walks transitively through any cause", func(t *testing.T) {
 		sentinel := errors.New("sentinel")
 		inner := fmt.Errorf("layer: %w", sentinel)
+		unrelated := errors.New("unrelated")
 
-		if !errors.Is(events.New("x", nil, inner), sentinel) {
-			t.Errorf("errors.Is should reach the sentinel through Reasons[0]")
+		if !errors.Is(events.New("x", nil, unrelated, inner), sentinel) {
+			t.Errorf("errors.Is should reach the sentinel via unrelated, inner -> sentinel")
 		}
 	})
 }

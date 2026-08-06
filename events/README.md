@@ -97,8 +97,8 @@ Swap the whole scheme (struct-tag validation, say) with `WithValidator`.
 ## Errors
 
 `EventError` is the bus analog of `ReqError`: a `code`, the `event` name
-(stamped by the bus), a `meta` bag, and non-serialised `Reasons` for
-`errors.Is` and `errors.As`. Build one with `events.New` or `events.Wrap`.
+(stamped by the bus), a `meta` bag, and internal causes for `errors.Is`
+and `errors.As`. Build one with `events.New` or `events.Wrap`.
 The `Coercer` (pluggable via `WithCoercer`) projects arbitrary handler
 errors onto it, exactly as in `http`.
 
