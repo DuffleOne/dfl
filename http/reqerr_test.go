@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -37,8 +38,8 @@ func TestMKeys(t *testing.T) {
 	}
 }
 
-// TestReqErrorNew checks the simple case: New stores all fields and treats
-// the variadic reasons as Reasons in the same order they came in.
+// TestReqErrorNew checks the simple case: New stores all fields and records
+// the variadic causes in the order they came in.
 func TestReqErrorNew(t *testing.T) {
 	cause := errors.New("cause")
 	other := errors.New("other")
@@ -57,29 +58,22 @@ func TestReqErrorNew(t *testing.T) {
 		t.Errorf("Meta[x] = %v, want 1", got)
 	}
 
-	if !slices.Equal(e.Reasons, []error{cause, other}) {
-		t.Errorf("Reasons = %v, want [cause, other]", e.Reasons)
+	if !slices.Equal(e.Unwrap(), []error{cause, other}) {
+		t.Errorf("Unwrap() = %v, want [cause, other]", e.Unwrap())
 	}
 }
 
-// TestReqErrorWrap verifies Wrap puts the wrapped error first in Reasons,
-// then any explicit reasons after. Errors.Is should reach the wrapped error.
+// TestReqErrorWrap verifies Wrap puts the wrapped error first among the
+// causes, then any explicit causes after. Errors.Is should reach the
+// wrapped error.
 func TestReqErrorWrap(t *testing.T) {
 	primary := errors.New("primary")
 	secondary := errors.New("secondary")
 
 	e := dflhttp.Wrap(primary, http.StatusInternalServerError, "boom", nil, secondary)
 
-	if len(e.Reasons) != 2 {
-		t.Fatalf("Reasons len = %d, want 2", len(e.Reasons))
-	}
-
-	if e.Reasons[0] != primary {
-		t.Errorf("Reasons[0] = %v, want primary", e.Reasons[0])
-	}
-
-	if e.Reasons[1] != secondary {
-		t.Errorf("Reasons[1] = %v, want secondary", e.Reasons[1])
+	if !slices.Equal(e.Unwrap(), []error{primary, secondary}) {
+		t.Errorf("Unwrap() = %v, want [primary, secondary]", e.Unwrap())
 	}
 
 	if !errors.Is(e, primary) {
@@ -87,11 +81,11 @@ func TestReqErrorWrap(t *testing.T) {
 	}
 }
 
-// TestReqErrorUnwrap covers single-step unwrap traversal: nil with no
-// reasons, the first reason otherwise. Wrapped error chains traverse
-// transitively because errors.Is follows the chain.
+// TestReqErrorUnwrap covers the multi-error form: nil with no causes,
+// every cause otherwise, and errors.Is traversal through any branch, not
+// just the first.
 func TestReqErrorUnwrap(t *testing.T) {
-	t.Run("returns nil when no reasons", func(t *testing.T) {
+	t.Run("returns nil when no causes", func(t *testing.T) {
 		e := dflhttp.New(http.StatusInternalServerError, "x", nil)
 
 		if got := e.Unwrap(); got != nil {
@@ -99,27 +93,65 @@ func TestReqErrorUnwrap(t *testing.T) {
 		}
 	})
 
-	t.Run("returns the first reason", func(t *testing.T) {
+	t.Run("returns every cause", func(t *testing.T) {
 		first := errors.New("first")
 		second := errors.New("second")
 
 		e := dflhttp.New(http.StatusInternalServerError, "x", nil, first, second)
 
-		if got := e.Unwrap(); got != first {
-			t.Errorf("Unwrap() = %v, want first", got)
+		if got := e.Unwrap(); !slices.Equal(got, []error{first, second}) {
+			t.Errorf("Unwrap() = %v, want [first, second]", got)
 		}
 	})
 
-	t.Run("errors.Is walks transitively through Reasons[0]", func(t *testing.T) {
+	t.Run("errors.Is walks transitively through any cause", func(t *testing.T) {
 		sentinel := errors.New("sentinel")
 		inner := fmt.Errorf("layer: %w", sentinel)
+		unrelated := errors.New("unrelated")
 
-		e := dflhttp.New(http.StatusInternalServerError, "x", nil, inner)
+		e := dflhttp.New(http.StatusInternalServerError, "x", nil, unrelated, inner)
 
 		if !errors.Is(e, sentinel) {
-			t.Errorf("errors.Is(reqErr, sentinel) should be true via inner -> sentinel chain")
+			t.Errorf("errors.Is(reqErr, sentinel) should be true via unrelated, inner -> sentinel")
 		}
 	})
+}
+
+// TestReqErrorReasons pins the wire contract for reasons: they serialise
+// under "reasons" when present and disappear entirely when not, and
+// WithReasons copies rather than mutates, so a shared sentinel ReqError
+// can't leak reasons between requests.
+func TestReqErrorReasons(t *testing.T) {
+	sentinel := dflhttp.New(http.StatusUnprocessableEntity, "invalid_team", nil)
+
+	decorated := sentinel.WithReasons(
+		dflhttp.Reason{Code: "required", Meta: dflhttp.M{"in": "body", "field": "name"}},
+		dflhttp.Reason{Code: "invalid"},
+	)
+
+	if len(sentinel.Reasons) != 0 {
+		t.Fatalf("WithReasons mutated the receiver: %v", sentinel.Reasons)
+	}
+
+	body, err := json.Marshal(decorated)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	want := `{"code":"invalid_team","status_code":422,` +
+		`"reasons":[{"code":"required","meta":{"field":"name","in":"body"}},{"code":"invalid"}]}`
+	if string(body) != want {
+		t.Errorf("wire shape = %s, want %s", body, want)
+	}
+
+	bare, err := json.Marshal(sentinel)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if strings.Contains(string(bare), "reasons") {
+		t.Errorf("empty reasons should be omitted, got %s", bare)
+	}
 }
 
 // TestReqErrorError checks the Error() string format. Not a stable contract

@@ -170,9 +170,32 @@ On the wire it serialises as:
 {"code": "user_not_found", "status_code": 404, "meta": {"id": "42"}}
 ```
 
-`Reasons` (attached with `New`'s variadic tail or `Wrap`) never serialise;
+The causes attached with `New`'s variadic tail or `Wrap` never serialise;
 they exist for `errors.Is` and `errors.As` traversal, so a handler can both
 speak HTTP and preserve the underlying cause for callers and logs.
+
+Detail the caller should see goes the other way, as `Reasons`: structured,
+machine-readable entries that do serialise, one per failed check, so a
+client learns everything wrong with its request in one round trip rather
+than fixing one field per attempt:
+
+```go
+return nil, dflhttp.New(http.StatusUnprocessableEntity, "invalid_team", nil).
+    WithReasons(
+        dflhttp.Reason{Code: "required", Meta: dflhttp.M{"in": "body", "field": "name"}},
+        dflhttp.Reason{Code: "invalid", Meta: dflhttp.M{"in": "body", "field": "size", "message": "must be 1 or greater"}},
+    )
+```
+
+```json
+{"code": "invalid_team", "status_code": 422,
+ "reasons": [{"code": "required", "meta": {"field": "name", "in": "body"}},
+             {"code": "invalid", "meta": {"field": "size", "message": "must be 1 or greater", "in": "body"}}]}
+```
+
+`WithReasons` copies rather than mutates, so a package-level sentinel
+`ReqError` can be decorated per request safely. Causes are for your logs;
+reasons are for the caller.
 
 ### 2. `Coercer`, mapping your errors onto `ReqError`
 
