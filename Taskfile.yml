@@ -3,7 +3,7 @@ version: "3"
 vars:
   # Every Go module in the repo. `./...` only covers the module it runs in,
   # so anything repo-wide loops over these.
-  MODULES: ". events/aws events/gcp events/otel"
+  MODULES: ". http/cher events/aws events/gcp events/otel"
 
 tasks:
   test:

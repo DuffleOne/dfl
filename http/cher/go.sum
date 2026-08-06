@@ -1,0 +1,8 @@
+github.com/go-chi/chi/v5 v5.3.1 h1:3j4HZLGZQ3JpMCrPJF/Jl3mYJfWLKBfNJ6quurUGCf8=
+github.com/go-chi/chi/v5 v5.3.1/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
+github.com/matryer/is v1.4.1 h1:55ehd8zaGABKLXQUe2awZ99BD/PTc2ls+KV/dXphgEQ=
+github.com/matryer/is v1.4.1/go.mod h1:8I/i5uYgLzgsgEloJE1U6xx5HkBQpAZvepWuujKwMRU=
+github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+github.com/wearemojo/mojo-public-go v0.0.0-20260803142910-68e0dc1cb199 h1:tJsbqcr7f6bz6FM2PoZuwz+gCWUSAggWxCXaLpySHxw=
+github.com/wearemojo/mojo-public-go v0.0.0-20260803142910-68e0dc1cb199/go.mod h1:xQSPGbclqvzSBTHcfUplN2Bae2glR8LKtwn0hqIotDE=
