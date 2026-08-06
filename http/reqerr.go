@@ -11,9 +11,13 @@ import (
 // ReqError is the canonical http error type. Code, StatusCode, Meta, and
 // Reasons are serialised on the wire; the causes attached by New and Wrap
 // are internal, traversed by errors.Is and errors.As.
+//
+// StatusCode is omitted from the body when zero, so a contract that keeps
+// the status out of the body (it's on the status line already) can have
+// its Coercer or ErrorWriter zero the field on a copy before encoding.
 type ReqError struct {
 	Code       string   `json:"code"`
-	StatusCode int      `json:"status_code"`
+	StatusCode int      `json:"status_code,omitzero"`
 	Meta       M        `json:"meta,omitempty"`
 	Reasons    []Reason `json:"reasons,omitempty"`
 

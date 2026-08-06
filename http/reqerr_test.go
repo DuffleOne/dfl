@@ -154,6 +154,25 @@ func TestReqErrorReasons(t *testing.T) {
 	}
 }
 
+// TestStatusCodeIsDroppable pins the omitzero contract: a writer that wants
+// the status kept off the body (it's on the status line already) zeroes the
+// field on a copy and the key disappears.
+func TestStatusCodeIsDroppable(t *testing.T) {
+	e := dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": "42"})
+
+	out := *e
+	out.StatusCode = 0
+
+	body, err := json.Marshal(&out)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if want := `{"code":"user_not_found","meta":{"id":"42"}}`; string(body) != want {
+		t.Errorf("wire shape = %s, want %s", body, want)
+	}
+}
+
 // TestReqErrorError checks the Error() string format. Not a stable contract
 // for callers to parse, but worth pinning down so accidental changes are
 // caught.

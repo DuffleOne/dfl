@@ -170,6 +170,10 @@ On the wire it serialises as:
 {"code": "user_not_found", "status_code": 404, "meta": {"id": "42"}}
 ```
 
+`status_code` is omitted when zero, so a contract that keeps the status
+off the body (it's on the status line already) can zero the field on a
+copy in its `Coercer` or `ErrorWriter` and the key disappears.
+
 The causes attached with `New`'s variadic tail or `Wrap` never serialise;
 they exist for `errors.Is` and `errors.As` traversal, so a handler can both
 speak HTTP and preserve the underlying cause for callers and logs.
