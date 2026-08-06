@@ -157,6 +157,113 @@ func TestExactMatchTakesNoNeighbours(t *testing.T) {
 	}
 }
 
+// TestLatestServesNewestVariant covers the latest pseudo-version: an
+// enabled literal is served by the newest variant even under MatchExact,
+// and a trailing Default("latest") gives versionless requests the same
+// meaning. Without AllowLatest, "latest" stays an invalid version.
+func TestLatestServesNewestVariant(t *testing.T) {
+	newest := `{"first_name":"Ada","last_name":"Lovelace"}`
+
+	t.Run("literal pin under MatchExact", func(t *testing.T) {
+		api := version.NewResolver(version.Dates(),
+			version.Header("X-API-Version"),
+		).AllowLatest("latest")
+
+		users := version.NewEndpoint(api, version.WithMatch(version.MatchExact))
+		version.Handle(users, dateV1, handleUserV1)
+		version.Handle(users, dateV2, handleUserV2)
+
+		r := dflhttp.NewRouter(http.NewServeMux())
+		r.HandleFunc(http.MethodGet, "/users", users.Serve)
+
+		rec := get(t, r, "latest")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+		}
+
+		if got := strings.TrimSpace(rec.Body.String()); got != newest {
+			t.Errorf("body = %s, want the newest variant %s", got, newest)
+		}
+	})
+
+	t.Run("versionless requests via Default", func(t *testing.T) {
+		api := version.NewResolver(version.Dates(),
+			version.Header("X-API-Version"),
+			version.Default("latest"),
+		).AllowLatest("latest")
+
+		users := version.NewEndpoint(api)
+		version.Handle(users, dateV1, handleUserV1)
+		version.Handle(users, dateV2, handleUserV2)
+
+		r := dflhttp.NewRouter(http.NewServeMux())
+		r.HandleFunc(http.MethodGet, "/users", users.Serve)
+
+		rec := get(t, r, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+		}
+
+		if got := strings.TrimSpace(rec.Body.String()); got != newest {
+			t.Errorf("body = %s, want the newest variant %s", got, newest)
+		}
+	})
+
+	t.Run("disabled by default", func(t *testing.T) {
+		rec := get(t, datedEndpoint(t), "latest")
+
+		body := decodeErr(t, rec)
+		if rec.Code != http.StatusBadRequest || body.Code != "version_invalid" {
+			t.Errorf("got %d %s, want 400 version_invalid", rec.Code, body.Code)
+		}
+	})
+}
+
+// TestLatestIsRecordedOnTheContext checks a variant serving a latest pin
+// sees Latest set and Requested equal to Served.
+func TestLatestIsRecordedOnTheContext(t *testing.T) {
+	api := version.NewResolver(version.Dates(),
+		version.Header("X-API-Version"),
+	).AllowLatest("latest")
+
+	type pinInfo struct {
+		Requested string `json:"requested"`
+		Served    string `json:"served"`
+		Latest    bool   `json:"latest"`
+	}
+
+	e := version.NewEndpoint(api)
+	version.Handle(e, dateV1, func(ctx context.Context, _ *dflhttp.Empty) (*pinInfo, error) {
+		resolved, ok := version.FromContext[time.Time](ctx)
+		if !ok {
+			return nil, errors.New("no Resolved on the context")
+		}
+
+		return &pinInfo{
+			Requested: resolved.Requested.Format(time.DateOnly),
+			Served:    resolved.Served.Format(time.DateOnly),
+			Latest:    resolved.Latest,
+		}, nil
+	})
+
+	r := dflhttp.NewRouter(http.NewServeMux())
+	r.HandleFunc(http.MethodGet, "/users", e.Serve)
+
+	rec := get(t, r, "latest")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+
+	var info pinInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &info); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if !info.Latest || info.Requested != dateV1 || info.Served != dateV1 {
+		t.Errorf("resolved = %+v, want latest with requested and served both %s", info, dateV1)
+	}
+}
+
 // TestMissingAndInvalidFlowThroughTheRouter checks resolver failures come
 // out of the Router's error pipeline as dfl's wire shape.
 func TestMissingAndInvalidFlowThroughTheRouter(t *testing.T) {

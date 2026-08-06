@@ -2,6 +2,7 @@ package version
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -130,6 +131,9 @@ func (e *Endpoint[V]) HandleFunc(raw string, h dflhttp.HandlerFunc) {
 //
 //	r.HandleFunc(http.MethodGet, "/users", users.Serve)
 //
+// A request pinned to a latest literal (Resolver.AllowLatest) is served
+// by the newest registered variant, whatever the Match rule.
+//
 // Failures return *dflhttp.ReqError values (see the package errors), so
 // they flow through the Router's usual error pipeline. Serving an
 // Endpoint with no variants is a 500 version_unconfigured.
@@ -139,19 +143,30 @@ func (e *Endpoint[V]) Serve(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	requested, err := e.resolver.Resolve(r)
-	if err != nil {
+
+	latest := errors.Is(err, ErrLatest)
+	if err != nil && !latest {
 		return err
 	}
 
-	chosen, ok := e.pick(requested)
-	if !ok {
-		return dflhttp.Wrap(ErrUnsupported, http.StatusBadRequest, "version_unsupported", dflhttp.M{
-			"version":   e.resolver.scheme.Format(requested),
-			"supported": e.supported(),
-		})
+	var chosen variant[V]
+
+	if latest {
+		chosen = e.variants[len(e.variants)-1]
+		requested = chosen.version
+	} else {
+		var ok bool
+
+		chosen, ok = e.pick(requested)
+		if !ok {
+			return dflhttp.Wrap(ErrUnsupported, http.StatusBadRequest, "version_unsupported", dflhttp.M{
+				"version":   e.resolver.scheme.Format(requested),
+				"supported": e.supported(),
+			})
+		}
 	}
 
-	resolved := Resolved[V]{Requested: requested, Served: chosen.version}
+	resolved := Resolved[V]{Requested: requested, Served: chosen.version, Latest: latest}
 	r = r.WithContext(context.WithValue(r.Context(), resolvedKey{}, resolved))
 
 	return chosen.handle(w, r)

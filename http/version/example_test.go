@@ -52,3 +52,38 @@ func Example() {
 	// 2024-03-15 -> {"greeting":"hello"}
 	// 2024-06-01 -> {"greeting":"hello","language":"en"}
 }
+
+// ExampleResolver_AllowLatest shows the fully explicit regime instead:
+// MatchExact means a pin must name a declared version outright, and
+// "latest" is the one moving pointer, served by the newest declaration.
+func ExampleResolver_AllowLatest() {
+	api := version.NewResolver(version.Dates(),
+		version.Header("X-API-Version"),
+	).AllowLatest("latest")
+
+	greet := version.NewEndpoint(api, version.WithMatch(version.MatchExact))
+	version.Handle(greet, "2024-01-02", func(context.Context, *dflhttp.Empty) (*greetingV1, error) {
+		return &greetingV1{Greeting: "hello"}, nil
+	})
+	version.Handle(greet, "2024-06-01", func(context.Context, *dflhttp.Empty) (*greetingV2, error) {
+		return &greetingV2{Greeting: "hello", Language: "en"}, nil
+	})
+
+	r := dflhttp.NewRouter(http.NewServeMux())
+	r.HandleFunc(http.MethodGet, "/greeting", greet.Serve)
+
+	for _, pin := range []string{"2024-01-02", "2024-03-15", "latest"} {
+		req := httptest.NewRequest(http.MethodGet, "/greeting", nil)
+		req.Header.Set("X-API-Version", pin)
+
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		fmt.Printf("%s -> %s", pin, rec.Body.String())
+	}
+
+	// Output:
+	// 2024-01-02 -> {"greeting":"hello"}
+	// 2024-03-15 -> {"code":"version_unsupported","status_code":400,"meta":{"supported":["2024-01-02","2024-06-01"],"version":"2024-03-15"}}
+	// latest -> {"greeting":"hello","language":"en"}
+}

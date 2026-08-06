@@ -141,6 +141,44 @@ outright:
 users := version.NewEndpoint(api, version.WithMatch(version.MatchExact))
 ```
 
+Nothing carries between versions under `MatchExact`: an endpoint is
+declared at every version it exists at, and a pin between declarations is
+refused rather than served by a neighbour.
+
+## The latest pseudo-version
+
+Opt-in, and off by default: `AllowLatest` names request literals that mean
+"the newest variant of whichever endpoint answers".
+
+```go
+api := version.NewResolver(version.Dates(),
+    version.Header("X-API-Version"),
+).AllowLatest("latest")
+```
+
+A request pinned `latest` is served by the endpoint's newest registered
+variant, whatever the `Match` rule says, and `Resolved.Latest` on the
+context records that it asked. Add a trailing `Default("latest")` source
+to give requests carrying no version at all the same meaning, instead of
+the 400 they'd otherwise get.
+
+Literals are matched exactly after the usual whitespace trim and are
+checked before the scheme parses; one the scheme could itself parse
+panics at wiring, since it would shadow a real version. Enabling several
+(`AllowLatest("latest", "null")`, for clients that serialise an unset pin
+as a literal `"null"`) is fine.
+
+Paired with `MatchExact`, this reproduces the fully explicit model some
+APIs run (crpc-style): every version an endpoint exists at is declared,
+nothing is inherited between versions, and `latest` is the one moving
+pointer for callers that always want the newest. Callers on `latest`
+accept behaviour changing under them; that's the trade the pseudo-version
+has always been.
+
+For custom dispatch built on the resolution half alone: `Resolve` returns
+the bare sentinel `ErrLatest` for an enabled literal, and picking the
+variant is yours to do.
+
 ## Errors
 
 Failures return `*dflhttp.ReqError` values, so the wire shape is dfl's
@@ -165,6 +203,7 @@ func listUsersV1(ctx context.Context, req *ListUsersReq) (*ListUsersResp, error)
     resolved, _ := version.FromContext[time.Time](ctx)
     // resolved.Requested: the client's pin, after any Default
     // resolved.Served: this variant's version, older under MatchCompatible
+    // resolved.Latest: the client asked for latest, not a concrete pin
 }
 ```
 

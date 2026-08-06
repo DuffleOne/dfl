@@ -153,6 +153,59 @@ func TestResolvePathValue(t *testing.T) {
 	}
 }
 
+// TestResolveLatestReturnsBareSentinel checks an enabled latest literal
+// comes back as ErrLatest itself, not wrapped in a *dflhttp.ReqError: it
+// is an outcome for dispatch to act on, not a client error to serialise.
+func TestResolveLatestReturnsBareSentinel(t *testing.T) {
+	rv := datedResolver(version.Header("X-API-Version")).AllowLatest("latest")
+
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("X-API-Version", "  latest  ")
+
+	_, err := rv.Resolve(r)
+	if !errors.Is(err, version.ErrLatest) {
+		t.Fatalf("err = %v, want ErrLatest", err)
+	}
+
+	var reqErr *dflhttp.ReqError
+	if errors.As(err, &reqErr) {
+		t.Errorf("ErrLatest should not be a *dflhttp.ReqError, got %v", reqErr)
+	}
+}
+
+// TestAllowLatestPanicsOnMisconfiguration pins the wiring checks: an empty
+// call, a blank or padded literal, a duplicate, and a literal the scheme
+// would parse as a real version all panic at startup.
+func TestAllowLatestPanicsOnMisconfiguration(t *testing.T) {
+	expectPanic := func(t *testing.T, name string, wire func()) {
+		t.Helper()
+
+		defer func() {
+			if recover() == nil {
+				t.Errorf("expected AllowLatest to panic on %s", name)
+			}
+		}()
+
+		wire()
+	}
+
+	expectPanic(t, "an empty call", func() {
+		datedResolver(version.Header("X-API-Version")).AllowLatest()
+	})
+
+	expectPanic(t, "a blank literal", func() {
+		datedResolver(version.Header("X-API-Version")).AllowLatest(" ")
+	})
+
+	expectPanic(t, "a duplicate literal", func() {
+		datedResolver(version.Header("X-API-Version")).AllowLatest("latest").AllowLatest("latest")
+	})
+
+	expectPanic(t, "a literal the scheme parses", func() {
+		version.NewResolver(version.Sequential(), version.Query("v")).AllowLatest("v2")
+	})
+}
+
 // TestNewResolverPanicsOnMisconfiguration pins the fail-fast contract: a
 // nil scheme or an empty source list is a startup panic, not a request-time
 // surprise.

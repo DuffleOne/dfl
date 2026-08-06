@@ -34,6 +34,13 @@
 // is served by the "2024-01-02" variant, the newest one not newer than
 // the pin. Endpoints therefore version independently; register a new
 // variant only on the endpoints whose behaviour actually changed.
+//
+// WithMatch(MatchExact) runs the stricter regime instead, where a pin
+// must name a declared variant outright, and Resolver.AllowLatest adds an
+// opt-in latest pseudo-version served by an endpoint's newest variant.
+// Together they reproduce the fully explicit model: every version an
+// endpoint exists at is declared, nothing carries between versions, and
+// "latest" is the one moving pointer.
 package version
 
 import (
