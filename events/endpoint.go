@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 
 	dflhttp "github.com/duffleone/dfl/http"
@@ -62,15 +63,15 @@ func (b *Bus) asReqError(err error, name string) error {
 	}
 
 	eventErr = eventErr.withEvent(name)
+	reqErr := dflhttp.New(eventErr.Code, dflhttp.M(eventErr.Meta), eventErr)
 
-	status := http.StatusInternalServerError
-
-	switch eventErr.Code {
-	case "validation_failed", "invalid", "decode_failed":
-		status = http.StatusBadRequest
+	// A caller that sent us something unusable takes ReqError's 400 default.
+	// Anything else is the bus failing on our side, so it opts out.
+	if slices.Contains([]string{"validation_failed", "invalid", "decode_failed"}, eventErr.Code) {
+		return reqErr
 	}
 
-	return dflhttp.New(status, eventErr.Code, dflhttp.M(eventErr.Meta), eventErr)
+	return reqErr.WithStatus(http.StatusInternalServerError)
 }
 
 // pathSafe turns an event name into a URL path segment: lowercase, keeping

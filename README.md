@@ -6,12 +6,14 @@ message transports, `pgx`) and hides its backend behind a small
 interface, so implementations swap without application code noticing.
 
 Needs Go 1.27+ (the typed APIs are generic methods). The cloud transports
-are separate modules, so the core has no SDK dependencies.
+and the cher coercer are separate modules, so the core has no SDK
+dependencies.
 
 | Package                          | What it is                                        |
 | -------------------------------- | ------------------------------------------------- |
 | [`http`](./http)                 | Typed HTTP handlers with structured errors        |
 | [`http/oops`](./http/oops)       | Error coercer for `samber/oops`                   |
+| [`http/cher`](./http/cher)       | Error coercer for `cher` (own module)             |
 | [`http/version`](./http/version) | Versioned endpoints: a handler per API version    |
 | [`events`](./events)             | Typed event bus, async in-process or over HTTP    |
 | [`events/aws`](./events/aws)     | SQS, SNS, and EventBridge transports (own module) |
@@ -37,7 +39,7 @@ type GetUserReq struct {
 func handleGet(_ context.Context, req *GetUserReq) (*User, error) {
     user, ok := store[req.ID]
     if !ok {
-        return nil, dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": req.ID})
+        return nil, dflhttp.New("not_found", dflhttp.M{"resource": "user", "id": req.ID})
     }
     return &user, nil
 }
@@ -46,9 +48,11 @@ r := dflhttp.NewRouter(http.NewServeMux())
 r.Handle(http.MethodGet, "/users/{id}", handleGet)
 ```
 
-Errors go out as `{code, status_code, meta}`, plus `reasons` when you
-attach per-field detail; every layer is swappable, from mapping your own
-error types onto that shape to owning the response body outright.
+Errors go out as `{code, meta}`, plus `reasons` (which nest) when you
+attach per-field detail. The status stays on the status line and is
+derived from the code, defaulting to 400. Every layer is swappable, from
+mapping your own error types onto that shape to owning the response body
+outright.
 
 More: [http guide](./http/README.md) ·
 [runnable examples](./http/examples) ·

@@ -208,7 +208,7 @@ func (b *binder) bind(p *RequestParser, r *http.Request, dst any) error {
 		}
 
 		if err := p.setter(v.FieldByIndex(p.fieldIdx), val); err != nil {
-			return New(http.StatusBadRequest, "invalid_path_param", M{
+			return New("invalid_path_param", M{
 				"param": p.key,
 				"error": err.Error(),
 			})
@@ -225,7 +225,7 @@ func (b *binder) bind(p *RequestParser, r *http.Request, dst any) error {
 			}
 
 			if err := q.setter(v.FieldByIndex(q.fieldIdx), val); err != nil {
-				return New(http.StatusBadRequest, "invalid_query_param", M{
+				return New("invalid_query_param", M{
 					"param": q.key,
 					"error": err.Error(),
 				})
@@ -252,7 +252,7 @@ func (b *binder) bindBody(p *RequestParser, r *http.Request, dst reflect.Value) 
 	if ct := r.Header.Get("Content-Type"); ct != "" {
 		mt, _, _ := strings.Cut(ct, ";")
 		if strings.TrimSpace(mt) != "application/json" {
-			return New(http.StatusUnsupportedMediaType, "unsupported_media_type", M{
+			return New("unsupported_media_type", M{
 				"content_type": ct,
 			})
 		}
@@ -262,7 +262,7 @@ func (b *binder) bindBody(p *RequestParser, r *http.Request, dst reflect.Value) 
 
 	err := json.NewDecoder(r.Body).Decode(&raw)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return New(http.StatusBadRequest, "invalid_body", M{"error": err.Error()})
+		return New("invalid_body", M{"error": err.Error()})
 	}
 
 	for _, fb := range b.body {
@@ -272,7 +272,7 @@ func (b *binder) bindBody(p *RequestParser, r *http.Request, dst reflect.Value) 
 		}
 
 		if err := json.Unmarshal(rm, dst.FieldByIndex(fb.fieldIdx).Addr().Interface()); err != nil {
-			return New(http.StatusBadRequest, "invalid_body_field", M{
+			return New("invalid_body_field", M{
 				"field": fb.key,
 				"error": err.Error(),
 			})

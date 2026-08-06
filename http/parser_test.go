@@ -107,7 +107,7 @@ func TestDefaultParserRejectsNonJSONBody(t *testing.T) {
 	}
 
 	var reqErr *dflhttp.ReqError
-	if !errors.As(err, &reqErr) || reqErr.StatusCode != http.StatusUnsupportedMediaType {
+	if !errors.As(err, &reqErr) || reqErr.StatusCode() != http.StatusUnsupportedMediaType {
 		t.Fatalf("err = %v, want a 415 ReqError", err)
 	}
 }

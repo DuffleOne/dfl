@@ -53,9 +53,8 @@ func TestCreateWidgetValidationFailure(t *testing.T) {
 	}
 
 	var got struct {
-		Code       string         `json:"code"`
-		StatusCode int            `json:"status_code"`
-		Meta       map[string]any `json:"meta"`
+		Code string         `json:"code"`
+		Meta map[string]any `json:"meta"`
 	}
 
 	if err := json.Unmarshal(raw, &got); err != nil {
@@ -64,10 +63,6 @@ func TestCreateWidgetValidationFailure(t *testing.T) {
 
 	if got.Code != "validation_failed" {
 		t.Errorf("code = %q, want validation_failed", got.Code)
-	}
-
-	if got.StatusCode != http.StatusBadRequest {
-		t.Errorf("body statusCode = %d, want 400", got.StatusCode)
 	}
 
 	fields, ok := got.Meta["fields"].(map[string]any)

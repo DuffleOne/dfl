@@ -44,11 +44,7 @@ func TestReqErrorNew(t *testing.T) {
 	cause := errors.New("cause")
 	other := errors.New("other")
 
-	e := dflhttp.New(http.StatusBadRequest, "bad_request", dflhttp.M{"x": 1}, cause, other)
-
-	if e.StatusCode != http.StatusBadRequest {
-		t.Errorf("StatusCode = %d, want %d", e.StatusCode, http.StatusBadRequest)
-	}
+	e := dflhttp.New("bad_request", dflhttp.M{"x": 1}, cause, other)
 
 	if e.Code != "bad_request" {
 		t.Errorf("Code = %q, want %q", e.Code, "bad_request")
@@ -70,7 +66,7 @@ func TestReqErrorWrap(t *testing.T) {
 	primary := errors.New("primary")
 	secondary := errors.New("secondary")
 
-	e := dflhttp.Wrap(primary, http.StatusInternalServerError, "boom", nil, secondary)
+	e := dflhttp.Wrap(primary, "boom", nil, secondary)
 
 	if !slices.Equal(e.Unwrap(), []error{primary, secondary}) {
 		t.Errorf("Unwrap() = %v, want [primary, secondary]", e.Unwrap())
@@ -81,12 +77,107 @@ func TestReqErrorWrap(t *testing.T) {
 	}
 }
 
+// TestStatusCodeFromCode walks the code-to-status table, including the 400
+// default for a code nothing has claimed. 400 is the default on purpose: a
+// ReqError is an error somebody wrote down, so it's part of the contract
+// rather than something that should page anyone.
+func TestStatusCodeFromCode(t *testing.T) {
+	cases := []struct {
+		code string
+		want int
+	}{
+		{"bad_request", http.StatusBadRequest},
+		{"unauthorized", http.StatusUnauthorized},
+		{"access_denied", http.StatusForbidden},
+		{"not_found", http.StatusNotFound},
+		{"route_not_found", http.StatusNotFound},
+		{"method_not_allowed", http.StatusMethodNotAllowed},
+		{"endpoint_withdrawn", http.StatusGone},
+		{"unsupported_media_type", http.StatusUnsupportedMediaType},
+		{"too_many_requests", http.StatusTooManyRequests},
+		{"unknown", http.StatusInternalServerError},
+		{"anything_service_specific", http.StatusBadRequest},
+		{"", http.StatusBadRequest},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.code, func(t *testing.T) {
+			if got := dflhttp.New(tc.code, nil).StatusCode(); got != tc.want {
+				t.Errorf("StatusCode() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestWithStatus covers the escape hatch: the statuses outside the canonical
+// set have to come from somewhere, and WithStatus wins over whatever the code
+// would otherwise derive.
+func TestWithStatus(t *testing.T) {
+	t.Run("overrides the derived status", func(t *testing.T) {
+		e := dflhttp.New("name_taken", nil).WithStatus(http.StatusConflict)
+
+		if got := e.StatusCode(); got != http.StatusConflict {
+			t.Errorf("StatusCode() = %d, want 409", got)
+		}
+	})
+
+	t.Run("overrides a code the table knows", func(t *testing.T) {
+		e := dflhttp.New("not_found", nil).WithStatus(http.StatusGone)
+
+		if got := e.StatusCode(); got != http.StatusGone {
+			t.Errorf("StatusCode() = %d, want 410", got)
+		}
+	})
+
+	t.Run("copies rather than mutating", func(t *testing.T) {
+		sentinel := dflhttp.New("not_found", nil)
+
+		if got := sentinel.WithStatus(http.StatusGone); got == sentinel {
+			t.Fatalf("WithStatus should return a copy")
+		}
+
+		if got := sentinel.StatusCode(); got != http.StatusNotFound {
+			t.Errorf("receiver StatusCode() = %d after WithStatus, want 404", got)
+		}
+	})
+
+	t.Run("leaves the body alone", func(t *testing.T) {
+		body, err := json.Marshal(dflhttp.New("name_taken", nil).WithStatus(http.StatusConflict))
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+
+		if want := `{"code":"name_taken"}`; string(body) != want {
+			t.Errorf("wire shape = %s, want %s", body, want)
+		}
+	})
+}
+
+// TestStatusIsNotOnTheWire pins the shape: the status travels on the status
+// line, and the body is cher's {code, meta, reasons} with nothing extra.
+func TestStatusIsNotOnTheWire(t *testing.T) {
+	e := dflhttp.New("not_found", dflhttp.M{"id": "42"}).WithStatus(http.StatusGone)
+
+	body, err := json.Marshal(e)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if strings.Contains(string(body), "status") {
+		t.Errorf("body should carry no status, got %s", body)
+	}
+
+	if want := `{"code":"not_found","meta":{"id":"42"}}`; string(body) != want {
+		t.Errorf("wire shape = %s, want %s", body, want)
+	}
+}
+
 // TestReqErrorUnwrap covers the multi-error form: nil with no causes,
 // every cause otherwise, and errors.Is traversal through any branch, not
 // just the first.
 func TestReqErrorUnwrap(t *testing.T) {
 	t.Run("returns nil when no causes", func(t *testing.T) {
-		e := dflhttp.New(http.StatusInternalServerError, "x", nil)
+		e := dflhttp.New("x", nil)
 
 		if got := e.Unwrap(); got != nil {
 			t.Errorf("Unwrap() = %v, want nil", got)
@@ -97,7 +188,7 @@ func TestReqErrorUnwrap(t *testing.T) {
 		first := errors.New("first")
 		second := errors.New("second")
 
-		e := dflhttp.New(http.StatusInternalServerError, "x", nil, first, second)
+		e := dflhttp.New("x", nil, first, second)
 
 		if got := e.Unwrap(); !slices.Equal(got, []error{first, second}) {
 			t.Errorf("Unwrap() = %v, want [first, second]", got)
@@ -109,7 +200,7 @@ func TestReqErrorUnwrap(t *testing.T) {
 		inner := fmt.Errorf("layer: %w", sentinel)
 		unrelated := errors.New("unrelated")
 
-		e := dflhttp.New(http.StatusInternalServerError, "x", nil, unrelated, inner)
+		e := dflhttp.New("x", nil, unrelated, inner)
 
 		if !errors.Is(e, sentinel) {
 			t.Errorf("errors.Is(reqErr, sentinel) should be true via unrelated, inner -> sentinel")
@@ -122,7 +213,7 @@ func TestReqErrorUnwrap(t *testing.T) {
 // WithReasons copies rather than mutates, so a shared sentinel ReqError
 // can't leak reasons between requests.
 func TestReqErrorReasons(t *testing.T) {
-	sentinel := dflhttp.New(http.StatusUnprocessableEntity, "invalid_team", nil)
+	sentinel := dflhttp.New("invalid_team", nil)
 
 	decorated := sentinel.WithReasons(
 		dflhttp.Reason{Code: "required", Meta: dflhttp.M{"in": "body", "field": "name"}},
@@ -138,7 +229,7 @@ func TestReqErrorReasons(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	want := `{"code":"invalid_team","status_code":422,` +
+	want := `{"code":"invalid_team",` +
 		`"reasons":[{"code":"required","meta":{"field":"name","in":"body"}},{"code":"invalid"}]}`
 	if string(body) != want {
 		t.Errorf("wire shape = %s, want %s", body, want)
@@ -154,22 +245,39 @@ func TestReqErrorReasons(t *testing.T) {
 	}
 }
 
-// TestStatusCodeIsDroppable pins the omitzero contract: a writer that wants
-// the status kept off the body (it's on the status line already) zeroes the
-// field on a copy and the key disappears.
-func TestStatusCodeIsDroppable(t *testing.T) {
-	e := dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": "42"})
+// TestReqErrorNestedReasons: a reason carries its own reasons, so a check
+// that decomposes keeps its shape on the wire instead of flattening into one
+// list where the client has to guess which failure belongs to which field.
+func TestReqErrorNestedReasons(t *testing.T) {
+	e := dflhttp.New("validation_failed", nil).WithReasons(
+		dflhttp.Reason{
+			Code: "invalid",
+			Meta: dflhttp.M{"field": "address"},
+			Reasons: []dflhttp.Reason{
+				{Code: "required", Meta: dflhttp.M{"field": "postcode"}},
+				{
+					Code: "invalid",
+					Meta: dflhttp.M{"field": "country"},
+					Reasons: []dflhttp.Reason{
+						{Code: "not_supported"},
+					},
+				},
+			},
+		},
+	)
 
-	out := *e
-	out.StatusCode = 0
-
-	body, err := json.Marshal(&out)
+	body, err := json.Marshal(e)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	if want := `{"code":"user_not_found","meta":{"id":"42"}}`; string(body) != want {
-		t.Errorf("wire shape = %s, want %s", body, want)
+	want := `{"code":"validation_failed","reasons":[` +
+		`{"code":"invalid","meta":{"field":"address"},"reasons":[` +
+		`{"code":"required","meta":{"field":"postcode"}},` +
+		`{"code":"invalid","meta":{"field":"country"},"reasons":[{"code":"not_supported"}]}` +
+		`]}]}`
+	if string(body) != want {
+		t.Errorf("wire shape = %s,\nwant %s", body, want)
 	}
 }
 
@@ -177,7 +285,7 @@ func TestStatusCodeIsDroppable(t *testing.T) {
 // for callers to parse, but worth pinning down so accidental changes are
 // caught.
 func TestReqErrorError(t *testing.T) {
-	e := dflhttp.New(http.StatusBadRequest, "bad_request", dflhttp.M{"x": 1, "y": 2})
+	e := dflhttp.New("bad_request", dflhttp.M{"x": 1, "y": 2})
 
 	got := e.Error()
 
@@ -195,7 +303,8 @@ func TestReqErrorError(t *testing.T) {
 }
 
 // TestDefaultCoercer covers the minimal pluggable default: pass through
-// nil and *ReqError, otherwise wrap as 500 "unknown".
+// nil and *ReqError, otherwise wrap as "unknown", which is one of the codes
+// that does mean 500. An error nothing classified is a bug, not a contract.
 func TestDefaultCoercer(t *testing.T) {
 	t.Run("nil in, nil out", func(t *testing.T) {
 		if got := dflhttp.DefaultCoercer(nil); got != nil {
@@ -204,7 +313,7 @@ func TestDefaultCoercer(t *testing.T) {
 	})
 
 	t.Run("returns *ReqError unchanged", func(t *testing.T) {
-		in := dflhttp.New(http.StatusNotFound, "missing", nil)
+		in := dflhttp.New("missing", nil)
 
 		if got := dflhttp.DefaultCoercer(in); got != in {
 			t.Errorf("DefaultCoercer should return the same instance")
@@ -212,7 +321,7 @@ func TestDefaultCoercer(t *testing.T) {
 	})
 
 	t.Run("unwraps wrapped *ReqError via errors.As", func(t *testing.T) {
-		in := dflhttp.New(http.StatusBadGateway, "upstream", nil)
+		in := dflhttp.New("upstream", nil)
 		wrapped := fmt.Errorf("layer: %w", in)
 
 		if got := dflhttp.DefaultCoercer(wrapped); got != in {
@@ -225,8 +334,8 @@ func TestDefaultCoercer(t *testing.T) {
 
 		out := dflhttp.DefaultCoercer(original)
 
-		if out.StatusCode != http.StatusInternalServerError {
-			t.Errorf("StatusCode = %d, want 500", out.StatusCode)
+		if out.StatusCode() != http.StatusInternalServerError {
+			t.Errorf("StatusCode() = %d, want 500", out.StatusCode())
 		}
 
 		if out.Code != "unknown" {

@@ -81,7 +81,7 @@ func (u *Users) handleGet(_ context.Context, req *GetUserReq) (*User, error) {
 
 	user, ok := u.store[req.ID]
 	if !ok {
-		return nil, dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": req.ID})
+		return nil, dflhttp.New("not_found", dflhttp.M{"resource": "user", "id": req.ID})
 	}
 
 	return &user, nil
@@ -94,7 +94,7 @@ type CreateUserReq struct {
 
 func (u *Users) handleCreate(_ context.Context, req *CreateUserReq) (*User, error) {
 	if req.Name == "" {
-		return nil, dflhttp.New(http.StatusBadRequest, "name_required", nil)
+		return nil, dflhttp.New("name_required", nil)
 	}
 
 	u.mu.Lock()
@@ -118,7 +118,7 @@ type UpdateUserReq struct {
 
 func (u *Users) handleUpdate(_ context.Context, req *UpdateUserReq) (*User, error) {
 	if req.Name == "" {
-		return nil, dflhttp.New(http.StatusBadRequest, "name_required", nil)
+		return nil, dflhttp.New("name_required", nil)
 	}
 
 	u.mu.Lock()
@@ -126,7 +126,7 @@ func (u *Users) handleUpdate(_ context.Context, req *UpdateUserReq) (*User, erro
 
 	user, ok := u.store[req.ID]
 	if !ok {
-		return nil, dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": req.ID})
+		return nil, dflhttp.New("not_found", dflhttp.M{"resource": "user", "id": req.ID})
 	}
 
 	user.Name = req.Name

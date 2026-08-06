@@ -77,9 +77,8 @@ func get(t *testing.T, h http.Handler, pin string) *httptest.ResponseRecorder {
 }
 
 type errBody struct {
-	Code       string         `json:"code"`
-	StatusCode int            `json:"status_code"`
-	Meta       map[string]any `json:"meta"`
+	Code string         `json:"code"`
+	Meta map[string]any `json:"meta"`
 }
 
 func decodeErr(t *testing.T, rec *httptest.ResponseRecorder) errBody {
@@ -421,14 +420,16 @@ func TestStatusHeaderReportsDispatch(t *testing.T) {
 func TestMissingAndInvalidFlowThroughTheRouter(t *testing.T) {
 	h := datedEndpoint(t)
 
-	body := decodeErr(t, get(t, h, ""))
-	if body.Code != "version_missing" || body.StatusCode != http.StatusBadRequest {
-		t.Errorf("no pin: got %+v, want 400 version_missing", body)
+	rec := get(t, h, "")
+
+	if body := decodeErr(t, rec); body.Code != "version_missing" || rec.Code != http.StatusBadRequest {
+		t.Errorf("no pin: got %d %+v, want 400 version_missing", rec.Code, body)
 	}
 
-	body = decodeErr(t, get(t, h, "banana"))
-	if body.Code != "version_invalid" || body.StatusCode != http.StatusBadRequest {
-		t.Errorf("bad pin: got %+v, want 400 version_invalid", body)
+	rec = get(t, h, "banana")
+
+	if body := decodeErr(t, rec); body.Code != "version_invalid" || rec.Code != http.StatusBadRequest {
+		t.Errorf("bad pin: got %d %+v, want 400 version_invalid", rec.Code, body)
 	}
 }
 
@@ -521,8 +522,8 @@ func TestServeWithNoVariantsIs500(t *testing.T) {
 		t.Fatalf("err = %v, want a *dflhttp.ReqError", err)
 	}
 
-	if reqErr.StatusCode != http.StatusInternalServerError || reqErr.Code != "version_unconfigured" {
-		t.Errorf("got %d %s, want 500 version_unconfigured", reqErr.StatusCode, reqErr.Code)
+	if reqErr.StatusCode() != http.StatusInternalServerError || reqErr.Code != "version_unconfigured" {
+		t.Errorf("got %d %s, want 500 version_unconfigured", reqErr.StatusCode(), reqErr.Code)
 	}
 }
 

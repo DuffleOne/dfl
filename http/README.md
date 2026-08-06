@@ -42,7 +42,7 @@ type User struct {
 func handleGet(_ context.Context, req *GetUserReq) (*User, error) {
     user, ok := store[req.ID]
     if !ok {
-        return nil, dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": req.ID})
+        return nil, dflhttp.New("not_found", dflhttp.M{"resource": "user", "id": req.ID})
     }
 
     return &user, nil
@@ -161,18 +161,19 @@ The error pipeline has three layers. Most services only ever touch the first.
 ### 1. `ReqError`, the built-in shape
 
 ```go
-return nil, dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": req.ID})
+return nil, dflhttp.New("not_found", dflhttp.M{"resource": "user", "id": req.ID})
 ```
 
 On the wire it serialises as:
 
 ```json
-{"code": "user_not_found", "status_code": 404, "meta": {"id": "42"}}
+{"code": "not_found", "meta": {"resource": "user", "id": "42"}}
 ```
 
-`status_code` is omitted when zero, so a contract that keeps the status
-off the body (it's on the status line already) can zero the field on a
-copy in its `Coercer` or `ErrorWriter` and the key disappears.
+There's no status in the body. It's on the status line already, and leaving
+it off makes the shape identical to
+[cher](https://github.com/wearemojo/mojo-public-go/tree/main/lib/cher)'s, so
+a service can move between the two without its clients noticing.
 
 The causes attached with `New`'s variadic tail or `Wrap` never serialise;
 they exist for `errors.Is` and `errors.As` traversal, so a handler can both
@@ -184,7 +185,7 @@ client learns everything wrong with its request in one round trip rather
 than fixing one field per attempt:
 
 ```go
-return nil, dflhttp.New(http.StatusUnprocessableEntity, "invalid_team", nil).
+return nil, dflhttp.New("invalid_team", nil).
     WithReasons(
         dflhttp.Reason{Code: "required", Meta: dflhttp.M{"in": "body", "field": "name"}},
         dflhttp.Reason{Code: "invalid", Meta: dflhttp.M{"in": "body", "field": "size", "message": "must be 1 or greater"}},
@@ -192,33 +193,84 @@ return nil, dflhttp.New(http.StatusUnprocessableEntity, "invalid_team", nil).
 ```
 
 ```json
-{"code": "invalid_team", "status_code": 422,
+{"code": "invalid_team",
  "reasons": [{"code": "required", "meta": {"field": "name", "in": "body"}},
              {"code": "invalid", "meta": {"field": "size", "message": "must be 1 or greater", "in": "body"}}]}
+```
+
+Reasons nest, so a check that decomposes keeps its shape rather than
+flattening into one list where the client has to work out which failure
+belongs to which field:
+
+```go
+dflhttp.Reason{Code: "invalid", Meta: dflhttp.M{"in": "body", "field": "address"},
+    Reasons: []dflhttp.Reason{
+        {Code: "required", Meta: dflhttp.M{"field": "postcode"}},
+    }}
 ```
 
 `WithReasons` copies rather than mutates, so a package-level sentinel
 `ReqError` can be decorated per request safely. Causes are for your logs;
 reasons are for the caller.
 
+#### The status comes from the code
+
+`StatusCode()` derives the HTTP status from `Code`, and **the default is
+400**. A `ReqError` is an error somebody wrote down on purpose, which makes
+it part of the contract rather than something that should page anyone. The
+codes that genuinely are the server's fault say so.
+
+| Code                                    | Status |
+| --------------------------------------- | ------ |
+| `bad_request`, and anything unlisted    | 400    |
+| `unauthorized`                          | 401    |
+| `access_denied`                         | 403    |
+| `not_found`, `route_not_found`          | 404    |
+| `method_not_allowed`                    | 405    |
+| `endpoint_withdrawn`                    | 410    |
+| `unsupported_media_type`                | 415    |
+| `too_many_requests`                     | 429    |
+| `unknown`                               | 500    |
+
+That's cher's table, plus `unsupported_media_type` for the one the request
+parser produces. It's deliberately small: the code is the contract your
+client matches on, and the status is the coarse bucket in front of it. Push
+the specifics into the code and the meta, not into a status nobody can
+branch on.
+
+For the statuses outside it (a 409 on a conflicting write, a 402, a 502 from
+a dead upstream) say so directly:
+
+```go
+return nil, dflhttp.New("team_name_taken", dflhttp.M{"name": req.Name}).
+    WithStatus(http.StatusConflict)
+```
+
+`WithStatus` changes the status line only, and copies like `WithReasons`
+does. The body is untouched, so the client still matches on `code`.
+
 ### 2. `Coercer`, mapping your errors onto `ReqError`
 
 A `Coercer` is `func(error) *ReqError`. The default passes `*ReqError`
-through and turns anything else into a 500 `unknown`. Plug your own in when
-handlers return domain errors and you want the mapping in one place:
+through and turns anything else into `unknown`, which is one of the codes
+that does mean 500: an error nothing classified is a bug, not a contract.
+Plug your own in when handlers return domain errors and you want the mapping
+in one place:
 
 ```go
 r := dflhttp.NewRouter(mux, dflhttp.WithCoercer(func(err error) *dflhttp.ReqError {
     if errors.Is(err, pgxdb.NotFound) {
-        return dflhttp.Wrap(err, http.StatusNotFound, "not_found", nil)
+        return dflhttp.Wrap(err, "not_found", nil)
     }
 
     return dflhttp.DefaultCoercer(err)
 }))
 ```
 
-A ready-made coercer for `samber/oops` errors lives in
-[`http/oops`](./oops).
+Two ready-made coercers ship with the package: [`http/oops`](./oops) for
+`samber/oops` errors, and [`http/cher`](./cher) for
+[`cher`](https://github.com/wearemojo/mojo-public-go/tree/main/lib/cher),
+which takes its status from cher's own code-to-status table.
 
 ### 3. `ErrorWriter`, owning the response outright
 
@@ -279,7 +331,7 @@ func (r *CreateWidgetReq) validate() dflhttp.M {
 
 func handleCreate(_ context.Context, req *CreateWidgetReq) (*Widget, error) {
     if fields := req.validate(); fields != nil {
-        return nil, dflhttp.New(http.StatusBadRequest, "validation_failed", dflhttp.M{"fields": fields})
+        return nil, dflhttp.New("validation_failed", dflhttp.M{"fields": fields})
     }
     // ...
 }

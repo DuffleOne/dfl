@@ -11,10 +11,10 @@ import (
 // causes attached by New and Wrap are internal, traversed by errors.Is and
 // errors.As.
 //
-// Unlike ReqError there's no StatusCode: a bus has no HTTP status to carry. The
-// Event field names the event the error relates to and is stamped by the bus
-// when it has the name. RegisterEndpoint maps Code to an HTTP status when it
-// projects an EventError back onto a ReqError.
+// There's no status here: a bus has no HTTP status to carry. The Event field
+// names the event the error relates to and is stamped by the bus when it has
+// the name. RegisterEndpoint decides the status from Code when it projects an
+// EventError back onto a ReqError.
 type EventError struct {
 	Code  string `json:"code"`
 	Event string `json:"event,omitempty"`

@@ -77,7 +77,7 @@ func TestCoerceNil(t *testing.T) {
 // unchanged (same instance), so that handlers using dflhttp.New keep their
 // status, code, and meta intact.
 func TestCoercePassesThroughReqError(t *testing.T) {
-	in := dflhttp.New(http.StatusNotFound, "missing", dflhttp.M{"id": "x"})
+	in := dflhttp.New("missing", dflhttp.M{"id": "x"})
 
 	if got := Coerce(in); got != in {
 		t.Errorf("Coerce should return the same *ReqError instance")
@@ -87,7 +87,7 @@ func TestCoercePassesThroughReqError(t *testing.T) {
 // TestCoerceUnwrapsWrappedReqError: errors.As lets us find a *ReqError even
 // when wrapped by fmt.Errorf or anything else.
 func TestCoerceUnwrapsWrappedReqError(t *testing.T) {
-	in := dflhttp.New(http.StatusBadGateway, "upstream", nil)
+	in := dflhttp.New("upstream", nil)
 	wrapped := fmt.Errorf("layer: %w", in)
 
 	if got := Coerce(wrapped); got != in {
@@ -107,8 +107,8 @@ func TestCoerceOopsWithCode(t *testing.T) {
 
 	out := Coerce(err)
 
-	if out.StatusCode != http.StatusInternalServerError {
-		t.Errorf("StatusCode = %d, want 500", out.StatusCode)
+	if out.StatusCode() != http.StatusInternalServerError {
+		t.Errorf("StatusCode = %d, want 500", out.StatusCode())
 	}
 
 	if out.Code != "user_not_found" {
@@ -145,8 +145,8 @@ func TestCoerceGenericWrappedError(t *testing.T) {
 
 	out := Coerce(err)
 
-	if out.StatusCode != http.StatusInternalServerError {
-		t.Errorf("StatusCode = %d, want 500", out.StatusCode)
+	if out.StatusCode() != http.StatusInternalServerError {
+		t.Errorf("StatusCode = %d, want 500", out.StatusCode())
 	}
 
 	if out.Code != "database_connection_lost" {
@@ -161,8 +161,8 @@ func TestCoercePlainError(t *testing.T) {
 
 	out := Coerce(err)
 
-	if out.StatusCode != http.StatusInternalServerError {
-		t.Errorf("StatusCode = %d, want 500", out.StatusCode)
+	if out.StatusCode() != http.StatusInternalServerError {
+		t.Errorf("StatusCode = %d, want 500", out.StatusCode())
 	}
 
 	if out.Code != "unknown" {

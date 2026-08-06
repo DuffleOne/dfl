@@ -227,9 +227,9 @@ wire shape.
 ## Errors
 
 Failures return `*dflhttp.ReqError` values, so the wire shape is dfl's
-usual `{code, status_code, meta}` and a custom `Coercer` or `ErrorWriter`
-sees them like any handler error. Each carries a sentinel for
-`errors.Is`, so classification doesn't mean matching code strings:
+usual `{code, meta}` and a custom `Coercer` or `ErrorWriter` sees them like
+any handler error. Each carries a sentinel for `errors.Is`, so
+classification doesn't mean matching code strings:
 
 | Code                   | Status | When                                   | Sentinel         |
 | ---------------------- | ------ | -------------------------------------- | ---------------- |

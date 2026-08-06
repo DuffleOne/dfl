@@ -177,12 +177,12 @@ func (rv *Resolver[V]) Resolve(r *http.Request) (V, error) {
 
 		v, err := rv.scheme.Parse(raw)
 		if err != nil {
-			return zero, dflhttp.Wrap(ErrInvalid, http.StatusBadRequest, "version_invalid",
+			return zero, dflhttp.Wrap(ErrInvalid, "version_invalid",
 				dflhttp.M{"version": raw}, err)
 		}
 
 		return v, nil
 	}
 
-	return zero, dflhttp.Wrap(ErrMissing, http.StatusBadRequest, "version_missing", nil)
+	return zero, dflhttp.Wrap(ErrMissing, "version_missing", nil)
 }

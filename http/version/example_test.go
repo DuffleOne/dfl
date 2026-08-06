@@ -84,6 +84,6 @@ func ExampleResolver_AllowLatest() {
 
 	// Output:
 	// 2024-01-02 -> {"greeting":"hello"}
-	// 2024-03-15 -> {"code":"version_unsupported","status_code":400,"meta":{"supported":["2024-01-02","2024-06-01"],"version":"2024-03-15"}}
+	// 2024-03-15 -> {"code":"version_unsupported","meta":{"supported":["2024-01-02","2024-06-01"],"version":"2024-03-15"}}
 	// latest -> {"greeting":"hello","language":"en"}
 }

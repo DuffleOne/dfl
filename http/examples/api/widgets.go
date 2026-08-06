@@ -87,7 +87,7 @@ func (r *CreateWidgetReq) validate() dflhttp.M {
 
 func (w *Widgets) handleCreate(_ context.Context, req *CreateWidgetReq) (*Widget, error) {
 	if fields := req.validate(); fields != nil {
-		return nil, dflhttp.New(http.StatusBadRequest, "validation_failed", dflhttp.M{
+		return nil, dflhttp.New("validation_failed", dflhttp.M{
 			"fields": fields,
 		})
 	}

@@ -156,7 +156,10 @@ func (e *Endpoint[V]) HandleFunc(raw string, h dflhttp.HandlerFunc) {
 // Endpoint with no variants is a 500 version_unconfigured.
 func (e *Endpoint[V]) Serve(w http.ResponseWriter, r *http.Request) error {
 	if len(e.variants) == 0 && e.preview == nil {
-		return dflhttp.New(http.StatusInternalServerError, "version_unconfigured", nil)
+		// Not the caller's fault, so this one opts out of ReqError's 400
+		// default: an Endpoint with nothing registered is a wiring bug.
+		return dflhttp.New("version_unconfigured", nil).
+			WithStatus(http.StatusInternalServerError)
 	}
 
 	requested, err := e.resolver.Resolve(r)
@@ -217,7 +220,7 @@ func (e *Endpoint[V]) Serve(w http.ResponseWriter, r *http.Request) error {
 // unsupported builds the 400 version_unsupported ReqError, naming what the
 // request asked for and every version that would have worked.
 func (e *Endpoint[V]) unsupported(asked string) error {
-	return dflhttp.Wrap(ErrUnsupported, http.StatusBadRequest, "version_unsupported", dflhttp.M{
+	return dflhttp.Wrap(ErrUnsupported, "version_unsupported", dflhttp.M{
 		"version":   asked,
 		"supported": e.supported(),
 	})

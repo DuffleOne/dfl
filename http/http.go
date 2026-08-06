@@ -73,8 +73,8 @@ type ErrorWriter func(w http.ResponseWriter, r *http.Request, err error)
 
 // DefaultErrorWriter returns the ErrorWriter the Router uses when none is
 // set: it coerces the error with c (DefaultCoercer when c is nil) and writes
-// the resulting *ReqError as JSON with its StatusCode. A nil coercion result
-// writes a bare 500.
+// the resulting *ReqError as JSON, on the status its StatusCode derives. A
+// nil coercion result writes a bare 500.
 //
 // It's exported so a custom writer can keep it as the fallback for errors it
 // doesn't recognise:
@@ -104,7 +104,7 @@ func DefaultErrorWriter(c Coercer) ErrorWriter {
 			return
 		}
 
-		writeJSON(w, reqErr.StatusCode, reqErr)
+		writeJSON(w, reqErr.StatusCode(), reqErr)
 	}
 }
 
@@ -163,7 +163,7 @@ func WithCoercer(c Coercer) Option {
 // WithErrorWriter sets the ErrorWriter that turns errors into HTTP
 // responses, replacing the default coerce-to-ReqError-and-JSON path
 // entirely. Use it when callers should own the error response shape rather
-// than emitting dfl's {code, status_code, meta} struct.
+// than emitting dfl's {code, meta, reasons} struct.
 func WithErrorWriter(ew ErrorWriter) Option {
 	return func(r *Router) {
 		r.errorWriter = ew

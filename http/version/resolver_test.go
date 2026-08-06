@@ -72,8 +72,8 @@ func TestResolveMissingIs400(t *testing.T) {
 		t.Fatalf("err = %v, want a *dflhttp.ReqError", err)
 	}
 
-	if reqErr.StatusCode != http.StatusBadRequest || reqErr.Code != "version_missing" {
-		t.Errorf("got %d %s, want 400 version_missing", reqErr.StatusCode, reqErr.Code)
+	if reqErr.StatusCode() != http.StatusBadRequest || reqErr.Code != "version_missing" {
+		t.Errorf("got %d %s, want 400 version_missing", reqErr.StatusCode(), reqErr.Code)
 	}
 }
 
@@ -96,8 +96,8 @@ func TestResolveInvalidDoesNotFallThrough(t *testing.T) {
 		t.Fatalf("err = %v, want a *dflhttp.ReqError", err)
 	}
 
-	if reqErr.StatusCode != http.StatusBadRequest || reqErr.Code != "version_invalid" {
-		t.Errorf("got %d %s, want 400 version_invalid", reqErr.StatusCode, reqErr.Code)
+	if reqErr.StatusCode() != http.StatusBadRequest || reqErr.Code != "version_invalid" {
+		t.Errorf("got %d %s, want 400 version_invalid", reqErr.StatusCode(), reqErr.Code)
 	}
 
 	if got := reqErr.Meta["version"]; got != "banana" {

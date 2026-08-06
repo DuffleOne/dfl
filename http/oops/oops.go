@@ -18,9 +18,14 @@ import (
 // Coerce projects err into a *dflhttp.ReqError. Order of attempts:
 //   - nil in, nil out
 //   - existing *dflhttp.ReqError (via errors.As)
-//   - samber/oops error: extract Code, Context, Public; 500 status
-//   - any error with a non-nil Unwrap chain: derive code from message; 500
-//   - everything else: 500 "unknown"
+//   - samber/oops error: extract Code, Context, Public
+//   - any error with a non-nil Unwrap chain: derive code from message
+//   - everything else: "unknown"
+//
+// Everything except the pass-through gets a 500, overriding the status
+// ReqError would derive from the code. An oops error is one that arrived
+// carrying a stack trace, which makes it something that went wrong on this
+// side rather than a contract the caller can do anything about.
 func Coerce(err error) *dflhttp.ReqError {
 	if err == nil {
 		return nil
@@ -31,6 +36,10 @@ func Coerce(err error) *dflhttp.ReqError {
 		return reqErr
 	}
 
+	return serverError(err).WithStatus(http.StatusInternalServerError)
+}
+
+func serverError(err error) *dflhttp.ReqError {
 	var oopsErr samberoops.OopsError
 	if errors.As(err, &oopsErr) {
 		return coerceOops(err, oopsErr)
@@ -42,10 +51,10 @@ func Coerce(err error) *dflhttp.ReqError {
 			code = "unknown"
 		}
 
-		return dflhttp.Wrap(err, http.StatusInternalServerError, code, nil)
+		return dflhttp.Wrap(err, code, nil)
 	}
 
-	return dflhttp.Wrap(err, http.StatusInternalServerError, "unknown", nil)
+	return dflhttp.Wrap(err, "unknown", nil)
 }
 
 func coerceOops(err error, oopsErr samberoops.OopsError) *dflhttp.ReqError {
@@ -67,7 +76,7 @@ func coerceOops(err error, oopsErr samberoops.OopsError) *dflhttp.ReqError {
 		meta["public"] = public
 	}
 
-	return dflhttp.Wrap(err, http.StatusInternalServerError, code, meta)
+	return dflhttp.Wrap(err, code, meta)
 }
 
 // normaliseOopsCode is defensive against samber/oops API drift. Whatever

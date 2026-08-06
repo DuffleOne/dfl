@@ -444,7 +444,7 @@ func reqErrorPropagates(t *testing.T, f Factory) {
 
 	r.Handle(http.MethodGet, "/missing",
 		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
-			return nil, dflhttp.New(http.StatusNotFound, "not_found", dflhttp.M{"id": "x"})
+			return nil, dflhttp.New("not_found", dflhttp.M{"id": "x"})
 		})
 
 	rec := do(h, http.MethodGet, "/missing", nil, nil)
@@ -565,7 +565,7 @@ func middlewareShortCircuit(t *testing.T, f Factory) {
 
 	r.Use(func(_ dflhttp.HandlerFunc) dflhttp.HandlerFunc {
 		return func(_ http.ResponseWriter, _ *http.Request) error {
-			return dflhttp.New(http.StatusUnauthorized, "no_auth", nil)
+			return dflhttp.New("unauthorized", nil)
 		}
 	})
 
@@ -600,7 +600,7 @@ func useAfterGroupDoesNotPropagate(t *testing.T, f Factory) {
 
 	r.Use(func(_ dflhttp.HandlerFunc) dflhttp.HandlerFunc {
 		return func(_ http.ResponseWriter, _ *http.Request) error {
-			return dflhttp.New(http.StatusForbidden, "should_not_run", nil)
+			return dflhttp.New("should_not_run", nil)
 		}
 	})
 
@@ -655,7 +655,7 @@ func withCoercer(t *testing.T, f Factory) {
 			return nil
 		}
 
-		return dflhttp.New(http.StatusTeapot, "teapot", nil)
+		return dflhttp.New("teapot", nil).WithStatus(http.StatusTeapot)
 	}
 
 	r, h := f.New(dflhttp.WithCoercer(teapot))

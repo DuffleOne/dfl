@@ -125,7 +125,7 @@ once in a `Coercer`:
 ```go
 user, err := users.Get(ctx, db, req.ID)
 if errors.Is(err, pgxdb.NotFound) {
-    return nil, dflhttp.New(http.StatusNotFound, "user_not_found", dflhttp.M{"id": req.ID})
+    return nil, dflhttp.New("not_found", dflhttp.M{"resource": "user", "id": req.ID})
 }
 ```
 

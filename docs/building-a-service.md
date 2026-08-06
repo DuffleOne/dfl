@@ -111,7 +111,7 @@ type CreateUserReq struct {
 
 func (u *Users) handleCreate(ctx context.Context, req *CreateUserReq) (*store.User, error) {
 	if fields := req.validate(); fields != nil {
-		return nil, dflhttp.New(http.StatusBadRequest, "validation_failed", dflhttp.M{"fields": fields})
+		return nil, dflhttp.New("validation_failed", dflhttp.M{"fields": fields})
 	}
 
 	user, err := u.store.Create(ctx, req.Name, req.Email)
@@ -152,7 +152,7 @@ func (u *Users) Mount(rg *dflhttp.Router) {
 ```go
 func coerce(err error) *dflhttp.ReqError {
 	if errors.Is(err, pgxdb.NotFound) {
-		return dflhttp.Wrap(err, http.StatusNotFound, "not_found", nil)
+		return dflhttp.Wrap(err, "not_found", nil)
 	}
 
 	return dflhttp.DefaultCoercer(err)
@@ -160,7 +160,7 @@ func coerce(err error) *dflhttp.ReqError {
 ```
 
 If your codebase already has an error envelope of its own and dfl's
-`{code, status_code, meta}` shape isn't wanted on the wire, skip the coercer
+`{code, meta, reasons}` shape isn't wanted on the wire, skip the coercer
 and set `dflhttp.WithErrorWriter` instead; the
 [http guide](../http/README.md#errors) draws the line between the two.
 
