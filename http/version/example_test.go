@@ -27,10 +27,10 @@ func Example() {
 	)
 
 	greet := version.NewEndpoint(api)
-	version.Handle(greet, "2024-01-02", func(context.Context, *dflhttp.Empty) (*greetingV1, error) {
+	greet.Handle("2024-01-02", func(context.Context, *dflhttp.Empty) (*greetingV1, error) {
 		return &greetingV1{Greeting: "hello"}, nil
 	})
-	version.Handle(greet, "2024-06-01", func(context.Context, *dflhttp.Empty) (*greetingV2, error) {
+	greet.Handle("2024-06-01", func(context.Context, *dflhttp.Empty) (*greetingV2, error) {
 		return &greetingV2{Greeting: "hello", Language: "en"}, nil
 	})
 
@@ -62,10 +62,10 @@ func ExampleResolver_AllowLatest() {
 	).AllowLatest("latest")
 
 	greet := version.NewEndpoint(api, version.WithMatch(version.MatchExact))
-	version.Handle(greet, "2024-01-02", func(context.Context, *dflhttp.Empty) (*greetingV1, error) {
+	greet.Handle("2024-01-02", func(context.Context, *dflhttp.Empty) (*greetingV1, error) {
 		return &greetingV1{Greeting: "hello"}, nil
 	})
-	version.Handle(greet, "2024-06-01", func(context.Context, *dflhttp.Empty) (*greetingV2, error) {
+	greet.Handle("2024-06-01", func(context.Context, *dflhttp.Empty) (*greetingV2, error) {
 		return &greetingV2{Greeting: "hello", Language: "en"}, nil
 	})
 

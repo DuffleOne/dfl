@@ -87,10 +87,8 @@ func NewEndpoint[V any](resolver *Resolver[V], opts ...EndpointOption) *Endpoint
 // Handle registers a typed handler on e as the variant at version raw.
 // The contract matches Router.Handle: each variant has its own Req and
 // Resp, binding is prepared once here, and misuse (an unparseable or
-// duplicate version, an unbindable Req) panics at registration. It's a
-// package function, not a method: when this was written, golangci-lint
-// couldn't read a generic method on a generic receiver out of export data.
-func Handle[V, Req, Resp any](e *Endpoint[V], raw string, handler func(context.Context, Req) (Resp, error)) {
+// duplicate version, an unbindable Req) panics at registration.
+func (e *Endpoint[V]) Handle[Req, Resp any](raw string, handler func(context.Context, Req) (Resp, error)) {
 	h, err := dflhttp.Adapt(e.config.parser, handler)
 	if err != nil {
 		panic("dflhttp/version: " + err.Error())

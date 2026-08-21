@@ -33,8 +33,8 @@ api := version.NewResolver(version.Dates(),
 )
 
 users := version.NewEndpoint(api)
-version.Handle(users, "2024-01-02", listUsersV1)
-version.Handle(users, "2024-06-01", listUsersV2)
+users.Handle("2024-01-02", listUsersV1)
+users.Handle("2024-06-01", listUsersV2)
 
 r := dflhttp.NewRouter(http.NewServeMux())
 r.HandleFunc(http.MethodGet, "/users", users.Serve)
@@ -190,8 +190,8 @@ api := version.NewResolver(version.Dates(),
 ).AllowLatest("latest").AllowPreview("preview")
 
 users := version.NewEndpoint(api)
-version.Handle(users, "2024-06-01", listUsersV2)
-version.Handle(users, "preview", listUsersNext) // at most one per endpoint
+users.Handle("2024-06-01", listUsersV2)
+users.Handle("preview", listUsersNext) // at most one per endpoint
 ```
 
 A request pinned `preview` is served by the preview variant. On endpoints

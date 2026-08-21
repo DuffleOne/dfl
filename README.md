@@ -73,8 +73,8 @@ api := version.NewResolver(version.Dates(),
 ).AllowLatest("latest")
 
 users := version.NewEndpoint(api)
-version.Handle(users, "2024-01-02", listUsersV1)
-version.Handle(users, "2024-06-01", listUsersV2)
+users.Handle("2024-01-02", listUsersV1)
+users.Handle("2024-06-01", listUsersV2)
 
 r.HandleFunc(http.MethodGet, "/users", users.Serve)
 ```

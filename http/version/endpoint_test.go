@@ -51,8 +51,8 @@ func datedEndpoint(t *testing.T, opts ...version.EndpointOption) http.Handler {
 	api := version.NewResolver(version.Dates(), version.Header("X-API-Version"))
 
 	users := version.NewEndpoint(api, opts...)
-	version.Handle(users, dateV1, handleUserV1)
-	version.Handle(users, dateV2, handleUserV2)
+	users.Handle(dateV1, handleUserV1)
+	users.Handle(dateV2, handleUserV2)
 
 	r := dflhttp.NewRouter(http.NewServeMux())
 	r.HandleFunc(http.MethodGet, "/users", users.Serve)
@@ -173,8 +173,8 @@ func TestLatestServesNewestVariant(t *testing.T) {
 		).AllowLatest("latest")
 
 		users := version.NewEndpoint(api, version.WithMatch(version.MatchExact))
-		version.Handle(users, dateV1, handleUserV1)
-		version.Handle(users, dateV2, handleUserV2)
+		users.Handle(dateV1, handleUserV1)
+		users.Handle(dateV2, handleUserV2)
 
 		r := dflhttp.NewRouter(http.NewServeMux())
 		r.HandleFunc(http.MethodGet, "/users", users.Serve)
@@ -196,8 +196,8 @@ func TestLatestServesNewestVariant(t *testing.T) {
 		).AllowLatest("latest")
 
 		users := version.NewEndpoint(api)
-		version.Handle(users, dateV1, handleUserV1)
-		version.Handle(users, dateV2, handleUserV2)
+		users.Handle(dateV1, handleUserV1)
+		users.Handle(dateV2, handleUserV2)
 
 		r := dflhttp.NewRouter(http.NewServeMux())
 		r.HandleFunc(http.MethodGet, "/users", users.Serve)
@@ -236,7 +236,7 @@ func TestLatestIsRecordedOnTheContext(t *testing.T) {
 	}
 
 	e := version.NewEndpoint(api)
-	version.Handle(e, dateV1, func(ctx context.Context, _ *dflhttp.Empty) (*pinInfo, error) {
+	e.Handle(dateV1, func(ctx context.Context, _ *dflhttp.Empty) (*pinInfo, error) {
 		resolved, ok := version.FromContext[time.Time](ctx)
 		if !ok {
 			return nil, errors.New("no Resolved on the context")
@@ -282,11 +282,11 @@ func TestPreviewServesTheOverlay(t *testing.T) {
 		).AllowLatest("latest").AllowPreview("preview")
 
 		users := version.NewEndpoint(api, opts...)
-		version.Handle(users, dateV1, handleUserV1)
-		version.Handle(users, dateV2, handleUserV2)
+		users.Handle(dateV1, handleUserV1)
+		users.Handle(dateV2, handleUserV2)
 
 		if declareOverlay {
-			version.Handle(users, "preview", func(context.Context, *dflhttp.Empty) (*experimental, error) {
+			users.Handle("preview", func(context.Context, *dflhttp.Empty) (*experimental, error) {
 				return &experimental{Shiny: true}, nil
 			})
 		}
@@ -355,8 +355,8 @@ func TestStatusHeaderReportsDispatch(t *testing.T) {
 		).AllowLatest("latest").AllowPreview("preview").StatusHeader("Infra-Endpoint-Status")
 
 		users := version.NewEndpoint(api, opts...)
-		version.Handle(users, dateV1, handleUserV1)
-		version.Handle(users, dateV2, handleUserV2)
+		users.Handle(dateV1, handleUserV1)
+		users.Handle(dateV2, handleUserV2)
 
 		r := dflhttp.NewRouter(http.NewServeMux())
 		r.HandleFunc(http.MethodGet, "/users", users.Serve)
@@ -388,8 +388,8 @@ func TestStatusHeaderReportsDispatch(t *testing.T) {
 		).AllowPreview("preview").StatusHeader("Infra-Endpoint-Status")
 
 		e := version.NewEndpoint(api)
-		version.Handle(e, dateV1, handleUserV1)
-		version.Handle(e, "preview", handleUserV2)
+		e.Handle(dateV1, handleUserV1)
+		e.Handle("preview", handleUserV2)
 
 		r := dflhttp.NewRouter(http.NewServeMux())
 		r.HandleFunc(http.MethodGet, "/users", e.Serve)
@@ -444,7 +444,7 @@ func TestResolvedIsOnTheContext(t *testing.T) {
 	}
 
 	e := version.NewEndpoint(api)
-	version.Handle(e, dateV1, func(ctx context.Context, _ *dflhttp.Empty) (*pinInfo, error) {
+	e.Handle(dateV1, func(ctx context.Context, _ *dflhttp.Empty) (*pinInfo, error) {
 		resolved, ok := version.FromContext[time.Time](ctx)
 		if !ok {
 			return nil, errors.New("no Resolved on the context")
@@ -533,8 +533,8 @@ func TestVersionsReportsAscending(t *testing.T) {
 	api := version.NewResolver(version.Dates(), version.Header("X-API-Version"))
 
 	e := version.NewEndpoint(api)
-	version.Handle(e, dateV2, handleUserV2)
-	version.Handle(e, dateV1, handleUserV1)
+	e.Handle(dateV2, handleUserV2)
+	e.Handle(dateV1, handleUserV1)
 
 	got := e.Versions()
 	if len(got) != 2 {
@@ -561,7 +561,7 @@ func TestRegistrationPanics(t *testing.T) {
 			}
 		}()
 
-		version.Handle(newEndpoint(), "banana", handleUserV1)
+		newEndpoint().Handle("banana", handleUserV1)
 	})
 
 	t.Run("duplicate version", func(t *testing.T) {
@@ -572,8 +572,8 @@ func TestRegistrationPanics(t *testing.T) {
 		}()
 
 		e := newEndpoint()
-		version.Handle(e, dateV1, handleUserV1)
-		version.Handle(e, dateV1, handleUserV2)
+		e.Handle(dateV1, handleUserV1)
+		e.Handle(dateV1, handleUserV2)
 	})
 
 	t.Run("unbindable req", func(t *testing.T) {
@@ -587,7 +587,7 @@ func TestRegistrationPanics(t *testing.T) {
 			C chan int `query:"c"`
 		}
 
-		version.Handle(newEndpoint(), dateV1, func(context.Context, *badReq) (*dflhttp.Empty, error) {
+		newEndpoint().Handle(dateV1, func(context.Context, *badReq) (*dflhttp.Empty, error) {
 			return &dflhttp.Empty{}, nil
 		})
 	})
