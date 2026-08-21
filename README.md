@@ -136,7 +136,7 @@ More: [pgxdb guide](./db/pgxdb/README.md) ·
 
 ```
 task test   # go test for every module
-task lint   # golangci-lint + staticcheck for every module
+task lint   # golangci-lint for every module
 ```
 
 CI runs the same, per [ci.yml](./.github/workflows/ci.yml). The router

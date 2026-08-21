@@ -84,8 +84,7 @@ func DefaultCoercer(err error) *EventError {
 		return nil
 	}
 
-	var eventErr *EventError
-	if errors.As(err, &eventErr) {
+	if eventErr, ok := errors.AsType[*EventError](err); ok {
 		return eventErr
 	}
 

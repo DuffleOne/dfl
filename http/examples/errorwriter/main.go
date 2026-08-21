@@ -40,15 +40,13 @@ func (e *apiError) Error() string { return e.Code }
 // to emit dfl's shape for unrecognised errors could instead keep
 // dflhttp.DefaultErrorWriter(nil) around as its fallback.
 func writeError(w http.ResponseWriter, _ *http.Request, err error) {
-	var apiErr *apiError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*apiError](err); ok {
 		writeJSON(w, apiErr.Status, apiErr)
 
 		return
 	}
 
-	var reqErr *dflhttp.ReqError
-	if errors.As(err, &reqErr) {
+	if reqErr, ok := errors.AsType[*dflhttp.ReqError](err); ok {
 		out := &apiError{Code: reqErr.Code, Status: reqErr.StatusCode()}
 
 		if param, ok := reqErr.Meta["param"].(string); ok {

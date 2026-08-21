@@ -139,8 +139,7 @@ func DefaultCoercer(err error) *ReqError {
 		return nil
 	}
 
-	var reqErr *ReqError
-	if errors.As(err, &reqErr) {
+	if reqErr, ok := errors.AsType[*ReqError](err); ok {
 		return reqErr
 	}
 

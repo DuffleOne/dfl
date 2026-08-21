@@ -16,10 +16,10 @@ tasks:
         done
 
   lint:
-    desc: Run golangci-lint and staticcheck for every module
+    desc: Run golangci-lint for every module
     cmds:
       - |
         set -e
         for dir in {{.MODULES}}; do
-          (cd "$dir" && golangci-lint run ./... && staticcheck ./...)
+          (cd "$dir" && golangci-lint run ./...)
         done

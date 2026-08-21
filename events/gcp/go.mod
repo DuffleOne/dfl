@@ -4,7 +4,7 @@
 // in the service that talks to GCP.
 module github.com/duffleone/dfl/events/gcp
 
-go 1.27rc2
+go 1.27
 
 require (
 	cloud.google.com/go/pubsub/v2 v2.6.0

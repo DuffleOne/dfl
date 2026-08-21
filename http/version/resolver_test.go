@@ -167,8 +167,7 @@ func TestResolveLatestReturnsBareSentinel(t *testing.T) {
 		t.Fatalf("err = %v, want ErrLatest", err)
 	}
 
-	var reqErr *dflhttp.ReqError
-	if errors.As(err, &reqErr) {
+	if reqErr, ok := errors.AsType[*dflhttp.ReqError](err); ok {
 		t.Errorf("ErrLatest should not be a *dflhttp.ReqError, got %v", reqErr)
 	}
 }
@@ -234,8 +233,7 @@ func TestResolvePreviewReturnsBareSentinel(t *testing.T) {
 		t.Fatalf("err = %v, want ErrPreview", err)
 	}
 
-	var reqErr *dflhttp.ReqError
-	if errors.As(err, &reqErr) {
+	if reqErr, ok := errors.AsType[*dflhttp.ReqError](err); ok {
 		t.Errorf("ErrPreview should not be a *dflhttp.ReqError, got %v", reqErr)
 	}
 }

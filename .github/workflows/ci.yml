@@ -10,7 +10,7 @@ permissions:
 
 # The repo is five Go modules (root, the cher coercer, and the three cloud
 # transports), and `./...` only ever covers the module you run it from, so
-# every job loops over the module directories explicitly.
+# the test job loops over the module directories and lint fans out as a matrix.
 
 jobs:
   test:
@@ -20,10 +20,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          # Matches the "go 1.27rc2" directive in go.mod. Both say the RC
-          # explicitly, so nothing tries to fetch the unreleased go1.27.0.
-          # Move both to plain 1.27 when it ships.
-          go-version: "1.27.0-rc.2"
+          go-version: "1.27"
+          cache-dependency-path: "**/go.sum"
       - name: go test all modules
         run: |
           for dir in . http/cher events/aws events/gcp events/otel; do
@@ -33,37 +31,19 @@ jobs:
   golangci:
     name: golangci-lint
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [".", "http/cher", "events/aws", "events/gcp", "events/otel"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.27.0-rc.2"
-      # Built from source rather than via golangci/golangci-lint-action. The
-      # action downloads a prebuilt binary, and the released binaries are
-      # built with Go 1.26, which refuses to lint a module targeting 1.27:
-      # "the Go language version (go1.26) used to build golangci-lint is
-      # lower than the targeted Go version (1.27)". Building it with the RC
-      # sidesteps that. Go back to the action once they ship a release built
-      # with Go 1.27.
-      #
-      # v2.11.4 also couldn't read Go 1.27 export data (version 4, bumped to
-      # carry generic methods), so this is v2.12.2 regardless.
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
-      - name: golangci-lint all modules
-        run: |
-          for dir in . http/cher events/aws events/gcp events/otel; do
-            (cd "$dir" && golangci-lint run ./...)
-          done
-
-      # staticcheck runs separately, not through golangci-lint. The v0.7.0 that
-      # golangci-lint v2.12.2 vendors panics building Go 1.27's stdlib
-      # ("unexpected expr: *ast.KeyValueExpr" in internal/poll). It only shows
-      # up on linux, so it passes locally on a mac and fails here. v0.8.0-rc.1
-      # is fine. Drop this step and re-enable staticcheck in .golangci.yml once
-      # golangci-lint vendors v0.8 or later.
-      - run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.0-rc.1
-      - name: staticcheck all modules
-        run: |
-          for dir in . http/cher events/aws events/gcp events/otel; do
-            (cd "$dir" && staticcheck ./...)
-          done
+          go-version: "1.27"
+          cache-dependency-path: "**/go.sum"
+      # v2.13.1 release binaries are built with Go 1.27 and vendor staticcheck
+      # v0.8.0, which retires the RC-era workarounds: the from-source build and
+      # the standalone staticcheck step.
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.1
+          working-directory: ${{ matrix.module }}

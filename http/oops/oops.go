@@ -26,8 +26,7 @@ func Coerce(err error) *dflhttp.ReqError {
 		return nil
 	}
 
-	var reqErr *dflhttp.ReqError
-	if errors.As(err, &reqErr) {
+	if reqErr, ok := errors.AsType[*dflhttp.ReqError](err); ok {
 		return reqErr
 	}
 
@@ -35,8 +34,7 @@ func Coerce(err error) *dflhttp.ReqError {
 }
 
 func serverError(err error) *dflhttp.ReqError {
-	var oopsErr samberoops.OopsError
-	if errors.As(err, &oopsErr) {
+	if oopsErr, ok := errors.AsType[samberoops.OopsError](err); ok {
 		return coerceOops(err, oopsErr)
 	}
 

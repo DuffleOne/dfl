@@ -160,7 +160,7 @@ func (p *RequestParser) buildBinder(t reflect.Type) (*binder, error) {
 		}
 
 		if jsonTag := f.Tag.Get("json"); jsonTag != "" && jsonTag != "-" {
-			key := strings.SplitN(jsonTag, ",", 2)[0]
+			key, _, _ := strings.Cut(jsonTag, ",")
 			b.body = append(b.body, bodyBind{key: key, fieldIdx: f.Index})
 			b.hasBody = true
 		}
@@ -281,7 +281,7 @@ func (p *RequestParser) stringSetter(t reflect.Type) (SetterFunc, error) {
 
 	if reflect.PointerTo(t).Implements(textUnmarshalerType) {
 		return func(v reflect.Value, s string) error {
-			tu, ok := v.Addr().Interface().(encoding.TextUnmarshaler)
+			tu, ok := reflect.TypeAssert[encoding.TextUnmarshaler](v.Addr())
 			if !ok {
 				return errors.New("expected TextUnmarshaler")
 			}

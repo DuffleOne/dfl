@@ -4,7 +4,7 @@
 // only in the service that talks to AWS.
 module github.com/duffleone/dfl/events/aws
 
-go 1.27rc2
+go 1.27
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.32.8

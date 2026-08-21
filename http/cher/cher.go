@@ -25,13 +25,11 @@ func Coerce(err error) *dflhttp.ReqError {
 		return nil
 	}
 
-	var reqErr *dflhttp.ReqError
-	if errors.As(err, &reqErr) {
+	if reqErr, ok := errors.AsType[*dflhttp.ReqError](err); ok {
 		return reqErr
 	}
 
-	var cherErr mojocher.E
-	if errors.As(err, &cherErr) {
+	if cherErr, ok := errors.AsType[mojocher.E](err); ok {
 		return coerceCher(err, cherErr)
 	}
 

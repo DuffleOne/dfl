@@ -5,7 +5,7 @@
 // already speaks cher.
 module github.com/duffleone/dfl/http/cher
 
-go 1.27rc2
+go 1.27
 
 // The core lives in the same repo and isn't published with these features yet.
 replace github.com/duffleone/dfl => ../..

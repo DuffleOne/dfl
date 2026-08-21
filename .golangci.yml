@@ -1,16 +1,5 @@
 version: "2"
 
-# Linting a submodule (events/aws and friends) can fail with a bogus
-# typecheck error after a root-module edit, e.g. "rg.Handle undefined:
-# *Router has no field or method Handle". With a warm cache golangci-lint
-# typechecks the edited root packages from source but loads their
-# unchanged dependencies from export data, and the x/tools importer it
-# vendors can't yet read a generic method (one carrying its own type
-# parameters, like Router.Handle) out of export data. The same lag is why
-# version.Handle is a package function rather than an Endpoint method.
-# go build, go vet, and a cold-cache run are all fine, so when it bites:
-# golangci-lint cache clean, then rerun.
-
 linters:
   default: none
   enable:
@@ -36,20 +25,11 @@ linters:
     - recvcheck
     - revive
     - sloglint
-    # - staticcheck # runs as its own CI step instead, see .github/workflows/
-    #   lint.yml. golangci-lint v2.12.2 vendors honnef.co/go/tools v0.7.0,
-    #   whose IR builder panics building Go 1.27's stdlib ("unexpected expr:
-    #   *ast.KeyValueExpr" in internal/poll, linux only). staticcheck
-    #   v0.8.0-rc.1 handles it, so we run that standalone until golangci-lint
-    #   ships a release that vendors it. Fold this back in when it does.
+    - staticcheck
     - tagliatelle
     - thelper
     - unconvert
-    # - unparam # panics on our generic methods: x/tools go/ssa RuntimeTypes
-    #   walks method sets and trips over an uninstantiated type param
-    #   (golang/go#80139). Fixed upstream, but golangci-lint v2.12.2 still
-    #   vendors x/tools v0.44.0, which predates the fix. Re-enable once a
-    #   release picks up a newer x/tools.
+    - unparam
     - unused
     - wastedassign
     - whitespace

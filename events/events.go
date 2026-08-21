@@ -277,7 +277,7 @@ func zeroEvent[E Event]() (Event, error) {
 	t := reflect.TypeFor[E]()
 
 	if t.Kind() == reflect.Pointer {
-		ev, ok := reflect.New(t.Elem()).Interface().(Event)
+		ev, ok := reflect.TypeAssert[Event](reflect.New(t.Elem()))
 		if !ok {
 			return nil, New("not_an_event", M{"type": t.String()})
 		}
