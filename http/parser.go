@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +17,16 @@ import (
 // SetterFunc parses a raw path or query string into a single struct field.
 // dst is the addressable field; raw is the value as it arrived on the wire.
 type SetterFunc func(dst reflect.Value, raw string) error
+
+// LenientBody, embedded in a Req struct, opts that route's body binding out
+// of unknown-key rejection: keys no field claims are ignored rather than
+// refused. Reach for it only where an older server must keep accepting a
+// newer client's request; everywhere else the rejection is the feature,
+// since a dropped key is how a misnamed field becomes silently-wrong
+// behaviour instead of a 400.
+type LenientBody struct{}
+
+var lenientBodyType = reflect.TypeFor[LenientBody]()
 
 // RequestParser populates a typed request from an *http.Request, binding
 // fields tagged path, query, and json; per-Req plans are cached, so the
@@ -87,11 +98,13 @@ func (p *RequestParser) binderFor(t reflect.Type) (*binder, error) {
 // --- internal binder, the only place reflection lives ---
 
 type binder struct {
-	paths   []paramBind
-	queries []paramBind
-	body    []bodyBind
-	hasBody bool
-	noop    bool
+	paths     []paramBind
+	queries   []paramBind
+	body      []bodyBind
+	knownBody map[string]struct{}
+	hasBody   bool
+	lenient   bool
+	noop      bool
 }
 
 type paramBind struct {
@@ -130,10 +143,16 @@ func (p *RequestParser) buildBinder(t reflect.Type) (*binder, error) {
 		return nil, fmt.Errorf("req must be a struct, *struct, or http.Empty, got %s", t.Kind())
 	}
 
-	b := &binder{}
+	b := &binder{knownBody: map[string]struct{}{}}
 
 	for f := range t.Fields() {
 		if !f.IsExported() {
+			continue
+		}
+
+		if f.Type == lenientBodyType {
+			b.lenient = true
+
 			continue
 		}
 
@@ -162,6 +181,7 @@ func (p *RequestParser) buildBinder(t reflect.Type) (*binder, error) {
 		if jsonTag := f.Tag.Get("json"); jsonTag != "" && jsonTag != "-" {
 			key, _, _ := strings.Cut(jsonTag, ",")
 			b.body = append(b.body, bodyBind{key: key, fieldIdx: f.Index})
+			b.knownBody[key] = struct{}{}
 			b.hasBody = true
 		}
 	}
@@ -187,17 +207,18 @@ func (b *binder) bind(p *RequestParser, r *http.Request, dst any) error {
 		v = v.Elem()
 	}
 
-	for _, p := range b.paths {
-		val := r.PathValue(p.key)
+	// Failures collect rather than short-circuit, so one response names
+	// every bad input and the client fixes them in one round trip.
+	var reasons []Reason
+
+	for _, pb := range b.paths {
+		val := r.PathValue(pb.key)
 		if val == "" {
 			continue
 		}
 
-		if err := p.setter(v.FieldByIndex(p.fieldIdx), val); err != nil {
-			return New("invalid_path_param", M{
-				"param": p.key,
-				"error": err.Error(),
-			})
+		if err := pb.setter(v.FieldByIndex(pb.fieldIdx), val); err != nil {
+			reasons = append(reasons, paramReason("path", pb.key, err))
 		}
 	}
 
@@ -211,34 +232,44 @@ func (b *binder) bind(p *RequestParser, r *http.Request, dst any) error {
 			}
 
 			if err := q.setter(v.FieldByIndex(q.fieldIdx), val); err != nil {
-				return New("invalid_query_param", M{
-					"param": q.key,
-					"error": err.Error(),
-				})
+				reasons = append(reasons, paramReason("query", q.key, err))
 			}
 		}
 	}
 
 	if b.hasBody {
-		if err := b.bindBody(p, r, v); err != nil {
+		bodyReasons, err := b.bindBody(p, r, v)
+		if err != nil {
 			return err
 		}
+
+		reasons = append(reasons, bodyReasons...)
+	}
+
+	if len(reasons) > 0 {
+		return New("invalid_request", nil).WithReasons(reasons...)
 	}
 
 	return nil
 }
 
-func (b *binder) bindBody(p *RequestParser, r *http.Request, dst reflect.Value) error {
+// bindBody binds json-tagged fields and returns one Reason per failure:
+// fields that won't unmarshal, and, unless the Req embeds LenientBody, body
+// keys no field claims. The error return is reserved for failures that
+// preempt binding entirely: a non-JSON content type, or a custom decoder's
+// own error.
+func (b *binder) bindBody(p *RequestParser, r *http.Request, dst reflect.Value) ([]Reason, error) {
 	// A custom decoder owns the body outright: it picks the wire format, so
-	// the JSON content-type check and per-field binding below don't apply.
+	// the JSON content-type check, per-field binding, and unknown-key
+	// rejection below don't apply.
 	if p.DecodeBody != nil {
-		return p.DecodeBody(r.Body, dst.Addr().Interface())
+		return nil, p.DecodeBody(r.Body, dst.Addr().Interface())
 	}
 
 	if ct := r.Header.Get("Content-Type"); ct != "" {
 		mt, _, _ := strings.Cut(ct, ";")
 		if strings.TrimSpace(mt) != "application/json" {
-			return New("unsupported_media_type", M{
+			return nil, New("unsupported_media_type", M{
 				"content_type": ct,
 			})
 		}
@@ -248,8 +279,10 @@ func (b *binder) bindBody(p *RequestParser, r *http.Request, dst reflect.Value) 
 
 	err := json.NewDecoder(r.Body).Decode(&raw)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return New("invalid_body", M{"error": err.Error()})
+		return []Reason{{Code: "malformed", Meta: M{"in": "body", "error": err.Error()}}}, nil
 	}
+
+	var reasons []Reason
 
 	for _, fb := range b.body {
 		rm, ok := raw[fb.key]
@@ -258,14 +291,59 @@ func (b *binder) bindBody(p *RequestParser, r *http.Request, dst reflect.Value) 
 		}
 
 		if err := json.Unmarshal(rm, dst.FieldByIndex(fb.fieldIdx).Addr().Interface()); err != nil {
-			return New("invalid_body_field", M{
-				"field": fb.key,
-				"error": err.Error(),
-			})
+			reasons = append(reasons, bodyFieldReason(fb.key, err))
 		}
 	}
 
-	return nil
+	if !b.lenient {
+		reasons = append(reasons, b.unknownKeyReasons(raw)...)
+	}
+
+	return reasons, nil
+}
+
+// unknownKeyReasons returns one Reason per body key no field claims, sorted
+// so the wire shape is deterministic. Dropping them instead is only safe
+// when client and server schemas are guaranteed to agree, and the entire
+// point of versioning an API is that they don't.
+func (b *binder) unknownKeyReasons(raw map[string]json.RawMessage) []Reason {
+	var unknown []string
+
+	for key := range raw {
+		if _, ok := b.knownBody[key]; !ok {
+			unknown = append(unknown, key)
+		}
+	}
+
+	slices.Sort(unknown)
+
+	reasons := make([]Reason, 0, len(unknown))
+	for _, key := range unknown {
+		reasons = append(reasons, Reason{Code: "unknown_field", Meta: M{"in": "body", "field": key}})
+	}
+
+	return reasons
+}
+
+// paramReason is the Reason for an unparseable path or query value. field
+// is always the name the caller used on the wire, never the Go field name.
+func paramReason(in, field string, err error) Reason {
+	return Reason{Code: "invalid", Meta: M{"in": in, "field": field, "error": err.Error()}}
+}
+
+// bodyFieldReason distinguishes a type mismatch, where the decoder can name
+// what it wanted and what arrived, from any other per-field failure.
+func bodyFieldReason(field string, err error) Reason {
+	if typeErr, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
+		return Reason{Code: "invalid_type", Meta: M{
+			"in":       "body",
+			"field":    field,
+			"expected": typeErr.Type.String(),
+			"got":      typeErr.Value,
+		}}
+	}
+
+	return Reason{Code: "invalid", Meta: M{"in": "body", "field": field, "error": err.Error()}}
 }
 
 var textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()

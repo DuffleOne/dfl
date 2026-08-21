@@ -47,7 +47,10 @@ func Run(t *testing.T, f Factory) {
 	t.Run("BodyBindingRejectsNonJSON", func(t *testing.T) { bodyBindingRejectsNonJSON(t, f) })
 	t.Run("BodyBindingMalformedJSON", func(t *testing.T) { bodyBindingMalformedJSON(t, f) })
 	t.Run("PathPlusBody", func(t *testing.T) { pathPlusBody(t, f) })
-	t.Run("BodyDoesntBleedToNonJSONFields", func(t *testing.T) { bodyDoesntBleedToNonJSONFields(t, f) })
+	t.Run("BodyRejectsUnknownKeys", func(t *testing.T) { bodyRejectsUnknownKeys(t, f) })
+	t.Run("LenientBodyIgnoresUnknownKeys", func(t *testing.T) { lenientBodyIgnoresUnknownKeys(t, f) })
+	t.Run("BindingFailuresCollect", func(t *testing.T) { bindingFailuresCollect(t, f) })
+	t.Run("SuccessStatusCoder", func(t *testing.T) { successStatusCoder(t, f) })
 	t.Run("ReqErrorPropagates", func(t *testing.T) { reqErrorPropagates(t, f) })
 	t.Run("GenericErrorBecomes500", func(t *testing.T) { genericErrorBecomes500(t, f) })
 	t.Run("GroupPrefixesPaths", func(t *testing.T) { groupPrefixesPaths(t, f) })
@@ -189,8 +192,40 @@ type intPathReq struct {
 	N int `path:"n"`
 }
 
+// decodeReqError unmarshals the recorded body as a ReqError, failing the
+// test on garbage.
+func decodeReqError(t *testing.T, rec *httptest.ResponseRecorder) dflhttp.ReqError {
+	t.Helper()
+
+	var body dflhttp.ReqError
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+
+	return body
+}
+
+// hasReason reports whether body carries a Reason with the given code, and
+// "in"/"field" meta when those are non-empty.
+func hasReason(body dflhttp.ReqError, code, in, field string) bool {
+	for _, reason := range body.Reasons {
+		if reason.Code != code {
+			continue
+		}
+
+		gotIn, _ := reason.Meta["in"].(string)
+		gotField, _ := reason.Meta["field"].(string)
+
+		if (in == "" || gotIn == in) && (field == "" || gotField == field) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // pathBindingInvalid: a non-numeric value for an int path field is a 400
-// with the standard "invalid_path_param" code.
+// "invalid_request" whose reasons name the offending path param.
 func pathBindingInvalid(t *testing.T, f Factory) {
 	t.Helper()
 
@@ -207,13 +242,14 @@ func pathBindingInvalid(t *testing.T, f Factory) {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 
-	var body dflhttp.ReqError
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
+	body := decodeReqError(t, rec)
+
+	if body.Code != "invalid_request" {
+		t.Errorf("Code = %q, want invalid_request", body.Code)
 	}
 
-	if body.Code != "invalid_path_param" {
-		t.Errorf("Code = %q, want invalid_path_param", body.Code)
+	if !hasReason(body, "invalid", "path", "n") {
+		t.Errorf("Reasons = %+v, want an invalid reason for path param n", body.Reasons)
 	}
 }
 
@@ -276,7 +312,8 @@ func queryBindingMissingLeavesZero(t *testing.T, f Factory) {
 	}
 }
 
-// queryBindingInvalid: a non-bool value for a bool query field is 400.
+// queryBindingInvalid: a non-bool value for a bool query field is a 400
+// whose reasons name the query param.
 func queryBindingInvalid(t *testing.T, f Factory) {
 	t.Helper()
 
@@ -293,13 +330,14 @@ func queryBindingInvalid(t *testing.T, f Factory) {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 
-	var body dflhttp.ReqError
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
+	body := decodeReqError(t, rec)
+
+	if body.Code != "invalid_request" {
+		t.Errorf("Code = %q, want invalid_request", body.Code)
 	}
 
-	if body.Code != "invalid_query_param" {
-		t.Errorf("Code = %q, want invalid_query_param", body.Code)
+	if !hasReason(body, "invalid", "query", "open") {
+		t.Errorf("Reasons = %+v, want an invalid reason for query param open", body.Reasons)
 	}
 }
 
@@ -353,7 +391,8 @@ func bodyBindingRejectsNonJSON(t *testing.T, f Factory) {
 	}
 }
 
-// bodyBindingMalformedJSON: garbage in the body is a 400, not a 500.
+// bodyBindingMalformedJSON: garbage in the body is a 400 with a malformed
+// reason, not a 500.
 func bodyBindingMalformedJSON(t *testing.T, f Factory) {
 	t.Helper()
 
@@ -368,6 +407,10 @@ func bodyBindingMalformedJSON(t *testing.T, f Factory) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+
+	if body := decodeReqError(t, rec); !hasReason(body, "malformed", "body", "") {
+		t.Errorf("Reasons = %+v, want a malformed body reason", body.Reasons)
 	}
 }
 
@@ -403,19 +446,67 @@ func pathPlusBody(t *testing.T, f Factory) {
 	}
 }
 
-// bodyDoesntBleedToNonJSONFields is the security-relevant check: a body key
-// that matches the field name of a path-tagged field must not overwrite the
-// path-bound value. Path-tagged fields have no json: tag so they aren't in
-// the body's source-of-truth.
-func bodyDoesntBleedToNonJSONFields(t *testing.T, f Factory) {
+// bodyRejectsUnknownKeys is both the strictness check and the
+// security-relevant one: body keys no field claims, including ones aimed at
+// path-bound fields, are refused with every offender named, so a misnamed
+// field or a hijack attempt is a loud 400 rather than silently-wrong
+// behaviour.
+func bodyRejectsUnknownKeys(t *testing.T, f Factory) {
 	t.Helper()
 
 	r, h := f.New()
 
-	var captured updateReq
+	r.Handle(http.MethodPut, "/users/{id}",
+		func(_ context.Context, _ *updateReq) (*string, error) {
+			return new("ok"), nil
+		})
+
+	rec := do(h, http.MethodPut, "/users/42",
+		strings.NewReader(`{"id":"hijacked","ID":"hijacked","name":"alice"}`), jsonHeaders())
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for unknown body keys", rec.Code)
+	}
+
+	body := decodeReqError(t, rec)
+
+	if body.Code != "invalid_request" {
+		t.Errorf("Code = %q, want invalid_request", body.Code)
+	}
+
+	// Both offending keys arrive in one response, per the one-round-trip
+	// contract; "name" is a real field and must not be flagged.
+	for _, key := range []string{"ID", "id"} {
+		if !hasReason(body, "unknown_field", "body", key) {
+			t.Errorf("Reasons = %+v, want unknown_field for %q", body.Reasons, key)
+		}
+	}
+
+	if hasReason(body, "unknown_field", "body", "name") {
+		t.Errorf("Reasons = %+v, name is a declared field and must not be flagged", body.Reasons)
+	}
+}
+
+type lenientUpdateReq struct {
+	dflhttp.LenientBody
+
+	ID   string `path:"id"`
+	Name string `json:"name"`
+}
+
+// lenientBodyIgnoresUnknownKeys: the LenientBody embed restores drop-them
+// semantics for the one legitimate case (an older server reading a newer
+// client), and the original no-bleed property holds there: a body key
+// matching a path-bound field's name still can't overwrite the path value.
+func lenientBodyIgnoresUnknownKeys(t *testing.T, f Factory) {
+	t.Helper()
+
+	r, h := f.New()
+
+	var captured lenientUpdateReq
 
 	r.Handle(http.MethodPut, "/users/{id}",
-		func(_ context.Context, req *updateReq) (*string, error) {
+		func(_ context.Context, req *lenientUpdateReq) (*string, error) {
 			captured = *req
 
 			return new("ok"), nil
@@ -430,6 +521,79 @@ func bodyDoesntBleedToNonJSONFields(t *testing.T, f Factory) {
 
 	if captured.ID != "42" {
 		t.Errorf("ID = %q, want %q (path value must not be overridden by body)", captured.ID, "42")
+	}
+
+	if captured.Name != "alice" {
+		t.Errorf("Name = %q, want alice", captured.Name)
+	}
+}
+
+// bindingFailuresCollect: a request wrong in three places gets all three
+// reasons in one 400, not one failure per round trip.
+func bindingFailuresCollect(t *testing.T, f Factory) {
+	t.Helper()
+
+	r, h := f.New()
+
+	type searchReq struct {
+		Limit int    `query:"limit"`
+		Name  string `json:"name"`
+	}
+
+	r.Handle(http.MethodPost, "/search",
+		func(_ context.Context, _ *searchReq) (*string, error) {
+			return new("ok"), nil
+		})
+
+	rec := do(h, http.MethodPost, "/search?limit=lots",
+		strings.NewReader(`{"name":7,"nam":"x"}`), jsonHeaders())
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+
+	body := decodeReqError(t, rec)
+
+	if !hasReason(body, "invalid", "query", "limit") {
+		t.Errorf("Reasons = %+v, want invalid for query limit", body.Reasons)
+	}
+
+	if !hasReason(body, "invalid_type", "body", "name") {
+		t.Errorf("Reasons = %+v, want invalid_type for body name", body.Reasons)
+	}
+
+	if !hasReason(body, "unknown_field", "body", "nam") {
+		t.Errorf("Reasons = %+v, want unknown_field for body nam", body.Reasons)
+	}
+}
+
+type createdResp struct {
+	ID string `json:"id"`
+}
+
+func (createdResp) SuccessStatus() int { return http.StatusCreated }
+
+// successStatusCoder: a Resp implementing StatusCoder picks its success
+// status, so a create can 201 without leaving the typed model.
+func successStatusCoder(t *testing.T, f Factory) {
+	t.Helper()
+
+	r, h := f.New()
+
+	r.Handle(http.MethodPost, "/users",
+		func(_ context.Context, _ *dflhttp.Empty) (*createdResp, error) {
+			return &createdResp{ID: "u1"}, nil
+		})
+
+	rec := do(h, http.MethodPost, "/users", nil, nil)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("status = %d, want 201", rec.Code)
+	}
+
+	var body createdResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.ID != "u1" {
+		t.Errorf("body = %q, want the encoded resp alongside the 201", rec.Body.String())
 	}
 }
 
@@ -765,8 +929,8 @@ func errorWriterSeesBindingFailures(t *testing.T, f Factory) {
 
 	do(h, http.MethodGet, "/n/notanumber", nil, nil)
 
-	if seen == nil || seen.Code != "invalid_path_param" {
-		t.Errorf("writer saw %+v, want the parser's invalid_path_param ReqError", seen)
+	if seen == nil || seen.Code != "invalid_request" {
+		t.Errorf("writer saw %+v, want the parser's invalid_request ReqError", seen)
 	}
 }
 

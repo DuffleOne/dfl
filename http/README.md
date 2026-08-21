@@ -29,6 +29,19 @@ just `return nil, err`, and `*dflhttp.Empty` covers routes with no input or
 output of substance (an `Empty` response produces `204 No Content`). Value
 shapes also work, but the pointer form is what every example uses.
 
+The success status is a property of the `Resp` type, the same way `Empty`
+means 204: a body writes 200 unless the type says otherwise by
+implementing `StatusCoder`. It's read once at registration, so return a
+constant.
+
+```go
+type CreatedUser struct {
+    ID string `json:"id"`
+}
+
+func (CreatedUser) SuccessStatus() int { return http.StatusCreated }
+```
+
 ```go
 type GetUserReq struct {
     ID string `path:"id"`
@@ -59,11 +72,11 @@ func main() {
 
 Fields of `Req` bind by struct tag:
 
-| Tag            | Source                              | On failure                    |
-| -------------- | ----------------------------------- | ----------------------------- |
-| `path:"name"`  | `r.PathValue("name")`               | 400 `invalid_path_param`      |
-| `query:"name"` | `r.URL.Query().Get("name")`         | 400 `invalid_query_param`     |
-| `json:"name"`  | that key of the JSON request body   | 400 `invalid_body_field`      |
+| Tag            | Source                            | Reason on failure         |
+| -------------- | --------------------------------- | ------------------------- |
+| `path:"name"`  | `r.PathValue("name")`             | `invalid`                 |
+| `query:"name"` | `r.URL.Query().Get("name")`       | `invalid`                 |
+| `json:"name"`  | that key of the JSON request body | `invalid`, `invalid_type` |
 
 Path and query values are strings on the wire, parsed into the field's type:
 strings, bools, ints, uints, floats, and anything implementing
@@ -71,12 +84,27 @@ strings, bools, ints, uints, floats, and anything implementing
 leaves the field at its zero value; requiredness is the handler's job (see
 the validation pattern below).
 
-Body binding touches only `json`-tagged fields, each decoded individually so
-the error can name the field. A key in the body that happens to match a
-path-bound field's name cannot overwrite it: path and query fields are simply
-not part of the body's field set. A request with a non-JSON `Content-Type`
-and a body-shaped `Req` fails fast with 415 `unsupported_media_type`;
-malformed JSON is a 400 `invalid_body`.
+Every binding failure on a request lands in one 400 `invalid_request` whose
+`reasons` name each bad input, so the client fixes everything in one round
+trip. Each reason carries `in` (`path`, `query`, or `body`) and `field`,
+always the name the caller used on the wire, never the Go field name; type
+mismatches get `invalid_type` with what was expected and what arrived, and
+malformed JSON gets a single `malformed` reason.
+
+Body binding touches only `json`-tagged fields, each decoded individually
+so its reason can name the field. Body keys no field claims are rejected,
+one `unknown_field` reason per key: dropping them is only safe when the
+client and server schemas are guaranteed to agree, and the entire point of
+versioning an API is that they don't. A misnamed field (`q` for `query`,
+`code` for `codes`) is therefore a loud 400 instead of a filter that
+silently matched everything. It also closes the sibling hole for free: a
+body key aimed at a path-bound field's name can't touch it, since path and
+query fields aren't in the body's field set, and now the attempt itself is
+refused. For the one legitimate exception, an older server that must keep
+accepting a newer client's request, embed `dflhttp.LenientBody` in that
+route's `Req` and unknown keys go back to being ignored. A request with a
+non-JSON `Content-Type` and a body-shaped `Req` still fails fast with 415
+`unsupported_media_type`.
 
 The binding plan for each `Req` type is built by reflection once, at
 registration, and cached. A `Req` the parser can't bind (say a `[]string`
@@ -153,6 +181,42 @@ pipeline as a handler failure.
 parser) and a snapshot of its middleware; `Use` on the parent after `Group`
 does not reach the child. Routes the typed model doesn't fit (SSE, websocket
 upgrades, custom content types) register raw with `r.HandleFunc`.
+
+### Middleware in the box
+
+`Recoverer()` converts a handler panic into a 500 `unknown` instead of
+killing the connection with nothing written. The panic value and stack go
+to `slog`; the wire sees only the code. Neither `net/http` nor chi will do
+this for you, so registered first it should be in every service:
+
+```go
+r.Use(dflhttp.Recoverer())
+```
+
+`RequestMeta(trustForwarded)` records cross-cutting request metadata on the
+context, read back with `dflhttp.ClientIP(ctx)` and `dflhttp.UserAgent(ctx)`.
+These are wanted by a minority of handlers (rate limiting, logging,
+"what can this client version be sent") and are part of no endpoint's
+contract, so they don't belong in any `Req` struct. `trustForwarded`
+controls whether `X-Forwarded-For`'s leftmost entry beats `RemoteAddr`; the
+header is client-writable, so set it only behind a proxy that rewrites it,
+and treat the result as fit for logs and rate limits, never authorization.
+The same context-value pattern is how to bind anything else cross-cutting
+(a build number, a verified token claim): middleware sets it, a typed
+accessor reads it.
+
+The router leaves unmatched routes to the mux, which answers with its own
+plain-text 404. `NotFoundHandler()` and `MethodNotAllowedHandler()` emit
+`route_not_found` and `method_not_allowed` in dfl's error shape instead;
+wire them wherever the mux hangs its fallbacks:
+
+```go
+mux := chi.NewMux()
+mux.NotFound(dflhttp.NotFoundHandler())
+mux.MethodNotAllowed(dflhttp.MethodNotAllowedHandler())
+```
+
+On a `ServeMux`, register `NotFoundHandler()` at the root pattern `/`.
 
 ## Errors
 
@@ -248,6 +312,20 @@ return nil, dflhttp.New("team_name_taken", dflhttp.M{"name": req.Name}).
 
 `WithStatus` changes the status line only, and copies like `WithReasons`
 does. The body is untouched, so the client still matches on `code`.
+
+Because a `ReqError` is an error, a domain package can own its errors and
+their statuses in one line, at the point of definition:
+
+```go
+var ErrHoldingConflict = dflhttp.New("holding_conflict", nil).
+    WithStatus(http.StatusConflict)
+```
+
+Handlers and services return it wrapped (`fmt.Errorf("create: %w", ...)`)
+and the default coercer finds it through the chain: the response gets the
+sentinel's code and status, `errors.Is` keeps matching at every layer, and
+the coercer never grows a case per domain. This is the pattern for errors
+you define; the `Coercer` below is for error types you don't.
 
 ### 2. `Coercer`, mapping your errors onto `ReqError`
 

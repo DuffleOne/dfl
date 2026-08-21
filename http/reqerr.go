@@ -42,6 +42,7 @@ var _ error = (*ReqError)(nil)
 // parser produces. Anything absent is a 400 (see StatusCode).
 var codeStatuses = map[string]int{
 	"bad_request":            http.StatusBadRequest,
+	"invalid_request":        http.StatusBadRequest,
 	"unauthorized":           http.StatusUnauthorized,
 	"access_denied":          http.StatusForbidden,
 	"not_found":              http.StatusNotFound,
