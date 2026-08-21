@@ -23,9 +23,9 @@ func init() {
 }
 
 // TestIsSerializationFailure pins down which errors are treated as
-// retry-eligible. Only a *pgconn.PgError with the SerializationFailure
-// SQLSTATE code counts; everything else is non-retryable, even if it
-// contains "serial" in the message somewhere.
+// retry-eligible. Only a *pgconn.PgError with the SerializationFailure or
+// DeadlockDetected SQLSTATE counts; everything else is non-retryable, even
+// if it contains "serial" in the message somewhere.
 func TestIsSerializationFailure(t *testing.T) {
 	cases := []struct {
 		name string
@@ -50,6 +50,11 @@ func TestIsSerializationFailure(t *testing.T) {
 		{
 			"PgError with SerializationFailure SQLSTATE is a serialization failure",
 			&pgconn.PgError{Code: pgerrcode.SerializationFailure},
+			true,
+		},
+		{
+			"PgError with DeadlockDetected SQLSTATE is retry-eligible too",
+			&pgconn.PgError{Code: pgerrcode.DeadlockDetected},
 			true,
 		},
 		{
