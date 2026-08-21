@@ -39,11 +39,5 @@ func PathValue(name string) Source {
 	}
 }
 
-// Default always hits with the given version. Place it last so requests
-// carrying no version resolve to a pin of your choosing; leave it out to
-// make the version mandatory (a 400 version_missing otherwise).
-func Default(raw string) Source {
-	return func(*http.Request) (string, bool) {
-		return raw, true
-	}
-}
+// A static default is not a Source: use Resolver.Fallback, which also lets
+// the resolver tell a real pin from a fallback, feeding WarnUnpinned.

@@ -113,6 +113,26 @@ func (e *Endpoint[V]) HandleFunc(raw string, h dflhttp.HandlerFunc) {
 		return
 	}
 
+	e.insert(raw, h)
+}
+
+// Withdraw marks e removed from version raw onward: requests resolving at
+// or past it get 410 endpoint_withdrawn naming the withdrawal version,
+// while older pins keep their variants, since under an additive contract
+// an endpoint can't be deleted, only stopped from raw forward. Internally
+// a variant with a nil handler, so it sorts, dispatches, and rejects
+// duplicates like any other.
+func (e *Endpoint[V]) Withdraw(raw string) {
+	if slices.Contains(e.resolver.preview, raw) || slices.Contains(e.resolver.latest, raw) {
+		panic("dflhttp/version: Withdraw takes a dated version, not a channel literal")
+	}
+
+	e.insert(raw, nil)
+}
+
+// insert parses raw and slots the variant into ascending order, panicking
+// on an unparseable or duplicate version.
+func (e *Endpoint[V]) insert(raw string, h dflhttp.HandlerFunc) {
 	v, err := e.resolver.scheme.Parse(raw)
 	if err != nil {
 		panic(fmt.Sprintf("dflhttp/version: bad version %q: %v", raw, err))
@@ -140,7 +160,7 @@ func (e *Endpoint[V]) Serve(w http.ResponseWriter, r *http.Request) error {
 			WithStatus(http.StatusInternalServerError)
 	}
 
-	requested, err := e.resolver.Resolve(r)
+	requested, unpinned, err := e.resolver.resolve(r)
 
 	var latest, preview bool
 
@@ -178,6 +198,24 @@ func (e *Endpoint[V]) Serve(w http.ResponseWriter, r *http.Request) error {
 		if !ok {
 			return e.unsupported(e.resolver.scheme.Format(requested))
 		}
+	}
+
+	// A nil handler is a Withdraw marker: the endpoint existed and stops
+	// here, which is a materially different debugging session from 404.
+	if dated && chosen.handle == nil {
+		return dflhttp.Wrap(ErrWithdrawn, "endpoint_withdrawn", dflhttp.M{
+			"withdrawn_at": e.resolver.scheme.Format(chosen.version),
+			"channel":      channel(latest, preview),
+		})
+	}
+
+	if name := e.resolver.warnHeader; name != "" && unpinned {
+		value := channel(latest, preview)
+		if dated {
+			value = e.resolver.scheme.Format(chosen.version)
+		}
+
+		w.Header().Set(name, value)
 	}
 
 	if name := e.resolver.statusHeader; name != "" {
@@ -240,7 +278,9 @@ func (e *Endpoint[V]) search(v V) (int, bool) {
 	})
 }
 
-// Versions returns the registered variant versions, oldest first.
+// Versions returns every declared version, oldest first, Withdraw markers
+// included: a withdrawal is an API change at its version, which is what
+// Registrar.Latest wants to see.
 func (e *Endpoint[V]) Versions() []V {
 	out := make([]V, len(e.variants))
 	for i, va := range e.variants {
@@ -250,11 +290,17 @@ func (e *Endpoint[V]) Versions() []V {
 	return out
 }
 
-// supported renders every registered version for error metadata.
+// supported renders the servable versions for error metadata, so a
+// Withdraw marker is never offered as something to pin.
 func (e *Endpoint[V]) supported() []string {
-	out := make([]string, len(e.variants))
-	for i, va := range e.variants {
-		out[i] = e.resolver.scheme.Format(va.version)
+	out := make([]string, 0, len(e.variants))
+
+	for _, va := range e.variants {
+		if va.handle == nil {
+			continue
+		}
+
+		out = append(out, e.resolver.scheme.Format(va.version))
 	}
 
 	return out

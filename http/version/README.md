@@ -90,14 +90,17 @@ A source is `func(r *http.Request) (raw string, ok bool)`. Built-ins:
 version.Header("X-API-Version")  // request header
 version.Query("api_version")     // query parameter
 version.PathValue("v")           // {v} bound by the router's pattern
-version.Default("2024-06-01")    // always hits; place it last
 ```
 
 The resolver tries sources in order and the first one to yield a value
 decides the request. Two consequences worth knowing:
 
-- A trailing `Default` catches requests that carry no version at all.
-  Without one, a versionless request is a 400 `version_missing`.
+- `Fallback("2024-06-01")` on the resolver catches requests that carry no
+  version at all. Without one, a versionless request is a 400
+  `version_missing`. It's resolver state rather than a source on purpose:
+  the resolver knows when the fallback answered instead of a client pin,
+  which is what `WarnUnpinned` reports on, and a typo in it panics at
+  wiring rather than per request.
 - A value that fails to parse is a 400 `version_invalid` even when a
   `Default` sits behind it. A garbled explicit version should be loud,
   not silently swapped for a fallback.
@@ -158,9 +161,9 @@ api := version.NewResolver(version.Dates(),
 
 A request pinned `latest` is served by the endpoint's newest registered
 variant, whatever the `Match` rule says, and `Resolved.Latest` on the
-context records that it asked. Add a trailing `Default("latest")` source
-to give requests carrying no version at all the same meaning, instead of
-the 400 they'd otherwise get.
+context records that it asked. Chain `Fallback("latest")` after it to give
+requests carrying no version at all the same meaning, instead of the 400
+they'd otherwise get.
 
 Literals are matched exactly after the usual whitespace trim and are
 checked before the scheme parses; one the scheme could itself parse
@@ -224,6 +227,41 @@ It's informational, for an engineer eyeballing a response; nothing should
 parse it. Off unless named, and absent on failures, which have their own
 wire shape.
 
+`WarnUnpinned` names a second header, set only when the request carried no
+version and the `Fallback` answered, holding the version served:
+
+```go
+api := version.NewResolver(version.Dates(),
+    version.Header("X-API-Version"),
+).AllowLatest("latest").Fallback("latest").WarnUnpinned("X-API-Version-Warning")
+```
+
+An unpinned client is a different situation from a pinned one: not an
+error, works fine today, and breaks silently the next time the newest
+version changes shape underneath it. A dedicated header makes that visible
+in any HTTP client without parsing the status value, and greppable in logs
+when working out who still hasn't pinned.
+
+## Withdrawing an endpoint
+
+Under an additive contract an endpoint can't be deleted, only stopped from
+a version onward, since clients pinned below keep working indefinitely.
+`Withdraw` declares that point:
+
+```go
+users.Handle("2024-01-02", listUsersV1)
+users.Handle("2024-06-01", listUsersV2)
+users.Withdraw("2024-09-01")
+```
+
+Requests resolving at or past the withdrawal, `latest` pins included, get
+410 `endpoint_withdrawn` with the withdrawal version in the meta; older
+pins keep their variants. The 410 tells a client the difference between
+"you have the URL wrong" and "this existed and you are pinned past its
+removal", which is a materially different debugging session. Internally a
+withdrawal is a variant with a nil handler, so it sorts in with the others,
+rejects duplicates the same way, and is never listed as supported.
+
 ## Errors
 
 Failures return `*dflhttp.ReqError` values, so the wire shape is dfl's
@@ -272,6 +310,35 @@ users.HandleFunc("2024-06-01", func(w http.ResponseWriter, r *http.Request) erro
 And since `Serve` is just a `HandlerFunc`, versioned dispatch composes
 anywhere one fits, not only at a route: wrap it in middleware, nest it,
 or adapt it onto a bare `http.ServeMux` with a three-line error writer.
+
+## Declaring routes inline
+
+Endpoint wiring is three lines per route before any handler exists, and at
+tens of routes that's real noise. The `Registrar` collects declarations,
+version next to handler, and registers one dispatcher per `(method, path)`
+when built:
+
+```go
+r := dflhttp.NewRouter(http.NewServeMux())
+g := version.NewRegistrar(r, api)
+
+g.Handle(http.MethodGet, "/users", "2024-01-02", listUsersV1)
+g.Handle(http.MethodGet, "/users", "2024-06-01", listUsersV2)
+g.Handle(http.MethodPost, "/users", "2024-01-02", createUser)
+g.Withdraw(http.MethodGet, "/users/export", "2024-09-01")
+
+g.Build()
+```
+
+Two-phase because the underlying mux matches on `(method, path)` alone, so
+header-selected versions of one path must share a single registration; the
+`Endpoint` stays the primitive underneath, one per route, reachable via
+`g.Endpoint(method, path)` for anything the shorthand doesn't cover.
+Declaring the same `(method, path, version)` twice panics at startup
+instead of one variant silently shadowing the other, and `g.Latest()`
+reports the newest version declared anywhere, withdrawals included: the
+API-wide latest an unpinned client is implicitly running against. Like all
+registration, startup-only and frozen once built.
 
 ## Testing
 

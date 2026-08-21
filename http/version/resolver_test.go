@@ -42,10 +42,10 @@ func TestResolveTriesSourcesInOrder(t *testing.T) {
 	}
 }
 
-// TestResolveDefaultCatchesVersionlessRequests checks a trailing Default
+// TestResolveFallbackCatchesVersionlessRequests checks the Fallback
 // pins requests that carry no version at all.
-func TestResolveDefaultCatchesVersionlessRequests(t *testing.T) {
-	rv := datedResolver(version.Header("X-API-Version"), version.Default(dateV1))
+func TestResolveFallbackCatchesVersionlessRequests(t *testing.T) {
+	rv := datedResolver(version.Header("X-API-Version")).Fallback(dateV1)
 
 	got, err := rv.Resolve(httptest.NewRequest(http.MethodGet, "/", nil))
 	if err != nil {
@@ -78,10 +78,10 @@ func TestResolveMissingIs400(t *testing.T) {
 }
 
 // TestResolveInvalidDoesNotFallThrough pins the loud-failure rule: a value
-// that fails to parse is a 400 even when a Default sits behind it, rather
+// that fails to parse is a 400 even when a Fallback sits behind it, rather
 // than being silently replaced.
 func TestResolveInvalidDoesNotFallThrough(t *testing.T) {
-	rv := datedResolver(version.Header("X-API-Version"), version.Default(dateV1))
+	rv := datedResolver(version.Header("X-API-Version")).Fallback(dateV1)
 
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.Header.Set("X-API-Version", "banana")
@@ -108,7 +108,7 @@ func TestResolveInvalidDoesNotFallThrough(t *testing.T) {
 // TestResolveTrimsAndSkipsWhitespace checks surrounding whitespace is
 // trimmed before parsing and a whitespace-only value counts as a miss.
 func TestResolveTrimsAndSkipsWhitespace(t *testing.T) {
-	rv := datedResolver(version.Header("X-API-Version"), version.Default(dateV1))
+	rv := datedResolver(version.Header("X-API-Version")).Fallback(dateV1)
 
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.Header.Set("X-API-Version", "  2024-06-01  ")

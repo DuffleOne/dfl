@@ -26,6 +26,12 @@ var (
 	// the wire: 400 version_unsupported.
 	ErrUnsupported = errors.New("version: no variant serves this version")
 
+	// ErrWithdrawn: the version resolved onto a Withdraw marker. On the
+	// wire: 410 endpoint_withdrawn, naming the withdrawal version, which
+	// tells a client "this existed and you are pinned past its removal"
+	// rather than "you have the URL wrong".
+	ErrWithdrawn = errors.New("version: endpoint withdrawn at this version")
+
 	// ErrLatest: the request pinned a latest literal enabled with
 	// AllowLatest. Not a failure: Endpoint.Serve catches it and dispatches
 	// to its newest variant. Resolve surfaces it so custom dispatch built
@@ -50,7 +56,9 @@ type Resolver[V any] struct {
 	sources      []Source
 	latest       []string
 	preview      []string
+	fallback     string
 	statusHeader string
+	warnHeader   string
 }
 
 // NewResolver builds a Resolver from a scheme and an ordered list of
@@ -70,10 +78,10 @@ func NewResolver[V any](scheme Scheme[V], sources ...Source) *Resolver[V] {
 
 // AllowLatest teaches the resolver request literals meaning "the newest
 // variant of whichever endpoint answers", whatever the Match rule; pair
-// with a trailing Default("latest") to make no-version requests mean the
-// same. Literals match exactly, before the scheme parses; one the scheme
-// could parse panics, as do blanks and duplicates. Calls accumulate, chain
-// off NewResolver, and belong in wiring, before traffic.
+// with Fallback("latest") to make no-version requests mean the same.
+// Literals match exactly, before the scheme parses; one the scheme could
+// parse panics, as do blanks and duplicates. Calls accumulate, chain off
+// NewResolver, and belong in wiring, before traffic.
 func (rv *Resolver[V]) AllowLatest(literals ...string) *Resolver[V] {
 	return rv.allowLiterals("latest", &rv.latest, literals)
 }
@@ -112,6 +120,32 @@ func (rv *Resolver[V]) allowLiterals(kind string, dst *[]string, literals []stri
 	return rv
 }
 
+// Fallback resolves requests carrying no version at all to raw, a version
+// or an enabled latest/preview literal, checked here so a typo panics in
+// wiring rather than per request; call it after AllowLatest or
+// AllowPreview when pairing them. Distinct from a Source on purpose: the
+// resolver knows a fallback resolution was not a client pin, which is what
+// WarnUnpinned reports on. Without one, versionless is 400 version_missing.
+func (rv *Resolver[V]) Fallback(raw string) *Resolver[V] {
+	if strings.TrimSpace(raw) == "" {
+		panic("dflhttp/version: Fallback needs a version or literal")
+	}
+
+	if rv.fallback != "" {
+		panic("dflhttp/version: Fallback is already set to " + rv.fallback)
+	}
+
+	if !slices.Contains(rv.latest, raw) && !slices.Contains(rv.preview, raw) {
+		if _, err := rv.scheme.Parse(raw); err != nil {
+			panic(fmt.Sprintf("dflhttp/version: fallback %q is neither a version nor an enabled literal: %v", raw, err))
+		}
+	}
+
+	rv.fallback = raw
+
+	return rv
+}
+
 // StatusHeader names a response header for Endpoint.Serve to report how
 // dispatch went: the channel the request asked for, plus the served
 // version when a dated variant answered, e.g. "stable;
@@ -119,17 +153,32 @@ func (rv *Resolver[V]) allowLiterals(kind string, dst *[]string, literals []stri
 // response; crpc callers will recognise "Infra-Endpoint-Status". Off
 // unless set, and set once: naming a second header panics.
 func (rv *Resolver[V]) StatusHeader(name string) *Resolver[V] {
-	if strings.TrimSpace(name) == "" {
-		panic("dflhttp/version: StatusHeader needs a header name")
-	}
-
-	if rv.statusHeader != "" {
-		panic("dflhttp/version: StatusHeader is already set to " + rv.statusHeader)
-	}
-
-	rv.statusHeader = name
+	rv.setHeader(&rv.statusHeader, "StatusHeader", name)
 
 	return rv
+}
+
+// WarnUnpinned names a response header set only when the request carried
+// no version and the Fallback answered, holding the version served. An
+// unpinned client works today and breaks silently when latest changes
+// shape, so this makes it visible in any HTTP client and greppable in
+// logs without parsing the status header. Off unless set; set once.
+func (rv *Resolver[V]) WarnUnpinned(name string) *Resolver[V] {
+	rv.setHeader(&rv.warnHeader, "WarnUnpinned", name)
+
+	return rv
+}
+
+func (rv *Resolver[V]) setHeader(dst *string, what, name string) {
+	if strings.TrimSpace(name) == "" {
+		panic("dflhttp/version: " + what + " needs a header name")
+	}
+
+	if *dst != "" {
+		panic("dflhttp/version: " + what + " is already set to " + *dst)
+	}
+
+	*dst = name
 }
 
 // Resolve extracts and parses the request's version. Sources are tried in
@@ -139,6 +188,15 @@ func (rv *Resolver[V]) StatusHeader(name string) *Resolver[V] {
 // return bare ErrLatest and ErrPreview; other failures are *ReqError.
 // Endpoint.Serve calls this for you; call it for custom dispatch.
 func (rv *Resolver[V]) Resolve(r *http.Request) (V, error) {
+	v, _, err := rv.resolve(r)
+
+	return v, err
+}
+
+// resolve is Resolve plus provenance: unpinned reports that no source
+// produced a version, so the outcome came from the Fallback (or is
+// version_missing without one). Serve uses it to drive WarnUnpinned.
+func (rv *Resolver[V]) resolve(r *http.Request) (V, bool, error) {
 	var zero V
 
 	for _, source := range rv.sources {
@@ -152,22 +210,38 @@ func (rv *Resolver[V]) Resolve(r *http.Request) (V, error) {
 			continue
 		}
 
-		if slices.Contains(rv.latest, raw) {
-			return zero, ErrLatest
-		}
+		v, err := rv.resolveRaw(raw)
 
-		if slices.Contains(rv.preview, raw) {
-			return zero, ErrPreview
-		}
-
-		v, err := rv.scheme.Parse(raw)
-		if err != nil {
-			return zero, dflhttp.Wrap(ErrInvalid, "version_invalid",
-				dflhttp.M{"version": raw}, err)
-		}
-
-		return v, nil
+		return v, false, err
 	}
 
-	return zero, dflhttp.Wrap(ErrMissing, "version_missing", nil)
+	if rv.fallback != "" {
+		v, err := rv.resolveRaw(rv.fallback)
+
+		return v, true, err
+	}
+
+	return zero, true, dflhttp.Wrap(ErrMissing, "version_missing", nil)
+}
+
+// resolveRaw gives one trimmed raw value its meaning: an enabled literal,
+// a parseable version, or a 400.
+func (rv *Resolver[V]) resolveRaw(raw string) (V, error) {
+	var zero V
+
+	if slices.Contains(rv.latest, raw) {
+		return zero, ErrLatest
+	}
+
+	if slices.Contains(rv.preview, raw) {
+		return zero, ErrPreview
+	}
+
+	v, err := rv.scheme.Parse(raw)
+	if err != nil {
+		return zero, dflhttp.Wrap(ErrInvalid, "version_invalid",
+			dflhttp.M{"version": raw}, err)
+	}
+
+	return v, nil
 }

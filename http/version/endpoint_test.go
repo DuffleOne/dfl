@@ -189,11 +189,10 @@ func TestLatestServesNewestVariant(t *testing.T) {
 		}
 	})
 
-	t.Run("versionless requests via Default", func(t *testing.T) {
+	t.Run("versionless requests via Fallback", func(t *testing.T) {
 		api := version.NewResolver(version.Dates(),
 			version.Header("X-API-Version"),
-			version.Default("latest"),
-		).AllowLatest("latest")
+		).AllowLatest("latest").Fallback("latest")
 
 		users := version.NewEndpoint(api)
 		users.Handle(dateV1, handleUserV1)
@@ -477,7 +476,7 @@ func TestResolvedIsOnTheContext(t *testing.T) {
 // TestHandleFuncRegistersRawVariants checks the escape hatch: a variant
 // that isn't a typed handler still dispatches by version.
 func TestHandleFuncRegistersRawVariants(t *testing.T) {
-	api := version.NewResolver(version.Sequential(), version.Query("v"), version.Default("v1"))
+	api := version.NewResolver(version.Sequential(), version.Query("v")).Fallback("v1")
 
 	e := version.NewEndpoint(api)
 	e.HandleFunc("v1", func(w http.ResponseWriter, _ *http.Request) error {

@@ -64,8 +64,9 @@ One route, a handler per API version. You choose where versions travel
 (header, query, path, your own extractor) and how they match: Stripe-style
 inheritance, where a pin gets the newest variant not newer than it, or
 fully explicit, where every version is declared and `latest` is the one
-moving pointer. A `preview` overlay and a status response header are both
-opt-in.
+moving pointer. A `preview` overlay, endpoint withdrawal, response headers
+for dispatch status and unpinned clients, and a registrar for declaring
+many routes inline are all opt-in.
 
 ```go
 api := version.NewResolver(version.Dates(),
