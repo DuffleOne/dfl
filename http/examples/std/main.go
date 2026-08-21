@@ -15,7 +15,13 @@ import (
 )
 
 func main() {
-	r := dflhttp.NewRouter(http.NewServeMux())
+	// The root pattern is the ServeMux's fallback: anything no route claims
+	// gets dfl's route_not_found shape instead of the stdlib's plain text.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", dflhttp.NotFoundHandler())
+
+	r := dflhttp.NewRouter(mux)
+	r.Use(dflhttp.Recoverer())
 
 	rg := r.Group("/api")
 

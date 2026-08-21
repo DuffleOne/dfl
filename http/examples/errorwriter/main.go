@@ -49,8 +49,17 @@ func writeError(w http.ResponseWriter, _ *http.Request, err error) {
 	if reqErr, ok := errors.AsType[*dflhttp.ReqError](err); ok {
 		out := &apiError{Code: reqErr.Code, Status: reqErr.StatusCode()}
 
-		if param, ok := reqErr.Meta["param"].(string); ok {
-			out.Reasons = []reason{{Field: param, Msg: "could not be parsed"}}
+		// Binding failures carry one Reason per bad input; flatten them
+		// into this service's own shape.
+		for _, rs := range reqErr.Reasons {
+			field, _ := rs.Meta["field"].(string)
+
+			msg, _ := rs.Meta["error"].(string)
+			if msg == "" {
+				msg = rs.Code
+			}
+
+			out.Reasons = append(out.Reasons, reason{Field: field, Msg: msg})
 		}
 
 		writeJSON(w, out.Status, out)

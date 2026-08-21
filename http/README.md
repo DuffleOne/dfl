@@ -385,31 +385,32 @@ the latter.
 ## Validation in one round trip
 
 Binding gets types right; requiredness and domain rules belong to the
-handler. The pattern used across the examples collects every failure before
-returning, so the client fixes everything at once:
+handler. The pattern used across the examples collects every failure into
+`Reasons`, the same `{in, field}` shape the binder emits, so a client reads
+one contract whether a field failed to bind or failed a rule:
 
 ```go
-func (r *CreateWidgetReq) validate() dflhttp.M {
-    fields := dflhttp.M{}
+func (r *CreateWidgetReq) validate() []dflhttp.Reason {
+    var reasons []dflhttp.Reason
 
     if r.Qty < 1 || r.Qty > 100 {
-        fields["qty"] = "must be between 1 and 100"
+        reasons = append(reasons, dflhttp.Reason{Code: "invalid", Meta: dflhttp.M{
+            "in": "query", "field": "qty", "error": "must be between 1 and 100",
+        }})
     }
 
     if strings.TrimSpace(r.Name) == "" {
-        fields["name"] = "is required"
+        reasons = append(reasons, dflhttp.Reason{Code: "required", Meta: dflhttp.M{
+            "in": "body", "field": "name",
+        }})
     }
 
-    if len(fields) == 0 {
-        return nil
-    }
-
-    return fields
+    return reasons
 }
 
 func handleCreate(_ context.Context, req *CreateWidgetReq) (*Widget, error) {
-    if fields := req.validate(); fields != nil {
-        return nil, dflhttp.New("validation_failed", dflhttp.M{"fields": fields})
+    if reasons := req.validate(); len(reasons) > 0 {
+        return nil, dflhttp.New("validation_failed", nil).WithReasons(reasons...)
     }
     // ...
 }
@@ -441,7 +442,8 @@ It's built on `Adapt`, the exported half of `Handle`'s typed plumbing:
 `Adapt` turns a typed handler into a `HandlerFunc` without registering it,
 for any dispatch decision that isn't a route. The
 [version guide](./version/README.md) covers schemes, sources, matching
-rules, and errors.
+rules, withdrawal, the registrar for declaring many routes inline, and
+errors.
 
 ## Testing handlers
 

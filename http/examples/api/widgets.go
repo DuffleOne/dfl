@@ -20,8 +20,8 @@ type Widget struct {
 
 // Widgets demonstrates a handler that validates input from all three
 // sources (path, query, body) in a single pass and returns one ReqError
-// with a field-level breakdown of every failure, so the client can fix
-// everything in one round trip rather than one error at a time.
+// with a Reason per failure, so the client can fix everything in one
+// round trip rather than one error at a time.
 type Widgets struct {
 	mu    sync.Mutex
 	store map[int]Widget
@@ -53,43 +53,48 @@ var allowedColors = map[string]struct{}{
 	"green": {},
 }
 
-// validate walks every field and records a message per failure. It
-// deliberately doesn't bail on the first error so the client gets a full
-// picture in one response.
-func (r *CreateWidgetReq) validate() dflhttp.M {
-	fields := dflhttp.M{}
+// validate walks every field and records a Reason per failure, in the
+// same {in, field} shape the binder emits, so the client reads one
+// contract whether a field failed to bind or failed a domain rule. It
+// deliberately doesn't bail on the first error.
+func (r *CreateWidgetReq) validate() []dflhttp.Reason {
+	var reasons []dflhttp.Reason
+
+	invalid := func(in, field, msg string) {
+		reasons = append(reasons, dflhttp.Reason{
+			Code: "invalid",
+			Meta: dflhttp.M{"in": in, "field": field, "error": msg},
+		})
+	}
 
 	if r.ID <= 0 {
-		fields["id"] = "must be a positive integer"
+		invalid("path", "id", "must be a positive integer")
 	}
 
 	if r.Qty < 1 || r.Qty > 100 {
-		fields["qty"] = "must be between 1 and 100"
+		invalid("query", "qty", "must be between 1 and 100")
 	}
 
 	switch {
 	case strings.TrimSpace(r.Name) == "":
-		fields["name"] = "is required"
+		reasons = append(reasons, dflhttp.Reason{
+			Code: "required",
+			Meta: dflhttp.M{"in": "body", "field": "name"},
+		})
 	case len(r.Name) > 50:
-		fields["name"] = "must be at most 50 characters"
+		invalid("body", "name", "must be at most 50 characters")
 	}
 
 	if _, ok := allowedColors[r.Color]; !ok {
-		fields["color"] = fmt.Sprintf("must be one of red, blue, green (got %q)", r.Color)
+		invalid("body", "color", fmt.Sprintf("must be one of red, blue, green (got %q)", r.Color))
 	}
 
-	if len(fields) == 0 {
-		return nil
-	}
-
-	return fields
+	return reasons
 }
 
 func (w *Widgets) handleCreate(_ context.Context, req *CreateWidgetReq) (*Widget, error) {
-	if fields := req.validate(); fields != nil {
-		return nil, dflhttp.New("validation_failed", dflhttp.M{
-			"fields": fields,
-		})
+	if reasons := req.validate(); len(reasons) > 0 {
+		return nil, dflhttp.New("validation_failed", nil).WithReasons(reasons...)
 	}
 
 	w.mu.Lock()

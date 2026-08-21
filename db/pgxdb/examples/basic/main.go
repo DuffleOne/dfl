@@ -44,6 +44,15 @@ func main() {
 		log.Fatalf("create bob: %v", err)
 	}
 
+	// A second alice trips the unique index on email. The classified error
+	// answers to IsUniqueViolation by constraint name, no SQLSTATEs in sight.
+	_, err = users.Create(ctx, db, "Alice again", "alice@example.com")
+	if !pgxdb.IsUniqueViolation(err, "users_email_key") {
+		log.Fatalf("duplicate alice: expected a unique violation, got %v", err)
+	}
+
+	log.Printf("duplicate email refused by %s", pgxdb.ConstraintName(err))
+
 	if err := users.Rename(ctx, db, alice.ID, "Alice Anderson"); err != nil {
 		log.Fatalf("rename: %v", err)
 	}

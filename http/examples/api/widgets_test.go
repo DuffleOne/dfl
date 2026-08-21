@@ -15,7 +15,8 @@ import (
 // TestCreateWidgetValidationFailure exercises the validation path: a single
 // request fails validation in all three input sources (path, query, body)
 // at once. The response should be a 400 with code "validation_failed" and
-// a meta.fields object that names every offending field.
+// a reasons array naming every offending field, {in, field} per entry,
+// the same shape binding failures use.
 func TestCreateWidgetValidationFailure(t *testing.T) {
 	r := dflhttp.NewRouter(http.NewServeMux())
 	api.NewWidgets().Mount(r)
@@ -53,8 +54,11 @@ func TestCreateWidgetValidationFailure(t *testing.T) {
 	}
 
 	var got struct {
-		Code string         `json:"code"`
-		Meta map[string]any `json:"meta"`
+		Code    string `json:"code"`
+		Reasons []struct {
+			Code string         `json:"code"`
+			Meta map[string]any `json:"meta"`
+		} `json:"reasons"`
 	}
 
 	if err := json.Unmarshal(raw, &got); err != nil {
@@ -65,33 +69,36 @@ func TestCreateWidgetValidationFailure(t *testing.T) {
 		t.Errorf("code = %q, want validation_failed", got.Code)
 	}
 
-	fields, ok := got.Meta["fields"].(map[string]any)
-	if !ok {
-		t.Fatalf("meta.fields missing or wrong shape: %v", got.Meta)
+	byField := map[string]struct{ code, in string }{}
+
+	for _, reason := range got.Reasons {
+		field, _ := reason.Meta["field"].(string)
+		in, _ := reason.Meta["in"].(string)
+		byField[field] = struct{ code, in string }{reason.Code, in}
 	}
 
-	wantFields := map[string]string{
-		"id":    "must be a positive integer",
-		"qty":   "must be between 1 and 100",
-		"name":  "is required",
-		"color": `must be one of red, blue, green (got "purple")`,
+	want := map[string]struct{ code, in string }{
+		"id":    {"invalid", "path"},
+		"qty":   {"invalid", "query"},
+		"name":  {"required", "body"},
+		"color": {"invalid", "body"},
 	}
 
-	for name, wantMsg := range wantFields {
-		gotMsg, present := fields[name]
+	for field, w := range want {
+		g, present := byField[field]
 		if !present {
-			t.Errorf("field %q missing from response: %v", name, fields)
+			t.Errorf("field %q missing from reasons: %v", field, got.Reasons)
 
 			continue
 		}
 
-		if gotMsg != wantMsg {
-			t.Errorf("field %q: got %q, want %q", name, gotMsg, wantMsg)
+		if g != w {
+			t.Errorf("field %q: got %+v, want %+v", field, g, w)
 		}
 	}
 
-	if len(fields) != len(wantFields) {
-		t.Errorf("got %d field errors (%v), want %d (%v)", len(fields), fields, len(wantFields), wantFields)
+	if len(got.Reasons) != len(want) {
+		t.Errorf("got %d reasons (%v), want %d", len(got.Reasons), got.Reasons, len(want))
 	}
 }
 

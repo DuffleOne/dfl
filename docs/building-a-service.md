@@ -110,8 +110,8 @@ type CreateUserReq struct {
 }
 
 func (u *Users) handleCreate(ctx context.Context, req *CreateUserReq) (*store.User, error) {
-	if fields := req.validate(); fields != nil {
-		return nil, dflhttp.New("validation_failed", dflhttp.M{"fields": fields})
+	if reasons := req.validate(); len(reasons) > 0 {
+		return nil, dflhttp.New("validation_failed", nil).WithReasons(reasons...)
 	}
 
 	// Emit before the write, and mint the id here so the event can name the
@@ -149,8 +149,15 @@ func (u *Users) Mount(rg *dflhttp.Router) {
 }
 ```
 
-`handleGet` doesn't mention 404 at all. That mapping belongs in one place, a
-`Coercer` installed on the router, rather than at every call site:
+`validate` returns `[]dflhttp.Reason` entries shaped `{in, field}`, the
+same contract the binder uses for its own failures, so the client parses
+one shape for "didn't bind" and "didn't pass the rules"; the
+[http guide](../http/README.md#validation-in-one-round-trip) has the full
+pattern.
+
+`handleGet` doesn't mention 404 at all, and `handleCreate` doesn't mention
+the duplicate-email case. Those mappings belong in one place, a `Coercer`
+installed on the router, rather than at every call site:
 
 ```go
 func coerce(err error) *dflhttp.ReqError {
@@ -158,9 +165,18 @@ func coerce(err error) *dflhttp.ReqError {
 		return dflhttp.Wrap(err, "not_found", nil)
 	}
 
+	if pgxdb.IsUniqueViolation(err, "users_email_key") {
+		return dflhttp.Wrap(err, "email_taken", nil).WithStatus(http.StatusConflict)
+	}
+
 	return dflhttp.DefaultCoercer(err)
 }
 ```
+
+The second branch is pgxdb's constraint classification doing the work: the
+store never inspects the error, the unique index on `email` speaks through
+`IsUniqueViolation`, and naming the index means a second unique constraint
+on the table won't silently start reporting `email_taken` too.
 
 If your codebase already has an error envelope of its own and dfl's
 `{code, meta, reasons}` shape isn't wanted on the wire, skip the coercer
@@ -184,14 +200,27 @@ func main() {
 	bus := events.NewBus(events.NewMemSink(), events.WithPlugins(otel.New()))
 	apievents.Subscribe(bus, mailer)
 
-	r := dflhttp.NewRouter(http.NewServeMux(), dflhttp.WithCoercer(coerce))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", dflhttp.NotFoundHandler()) // unmatched routes get dfl's shape
+
+	r := dflhttp.NewRouter(mux, dflhttp.WithCoercer(coerce))
+	r.Use(dflhttp.Recoverer()) // a panicking handler 500s instead of dropping the connection
 	r.Use(requestLogging)
+
+	r.Handle(http.MethodGet, "/health", func(ctx context.Context, _ *dflhttp.Empty) (*dflhttp.Empty, error) {
+		return nil, db.Ping(ctx) // prove the database, not just the listener
+	})
 
 	api.NewUsers(store.NewUsers(db), bus).Mount(r.Group("/api"))
 
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 ```
+
+The health route goes through `db.Ping` because a check that only proves
+the HTTP listener accepts connections reports healthy while pointing at a
+database that no longer exists; a pool that can't reach postgres is a
+service that can't serve requests.
 
 Registration order matters in one place only: install plugins and call
 `bus.Use` before registering handlers, since both apply to handlers
