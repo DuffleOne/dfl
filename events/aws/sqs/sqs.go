@@ -1,14 +1,16 @@
 // Package sqs provides an events.Sink backed by Amazon SQS: Publish sends
 // to the queue, and Receive long-polls it as a worker, dispatching each
 // message by the event name in its "event" attribute and deleting it on
-// success. One queue carries every event type. SQS has no HTTP push; for
-// push see sns, eventbridge, or events/gcp/pubsub.
+// success; ReceiveOnce is one turn of that loop, for a host with its own.
+// One queue carries every event type. SQS has no HTTP push; for push see
+// sns, eventbridge, or events/gcp/pubsub.
 package sqs
 
 import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -23,6 +25,11 @@ const (
 	// headersAttr carries the envelope headers as a JSON object, so trace
 	// context set by a plugin survives the round trip.
 	headersAttr = "headers"
+
+	// Receive waits this long after a failed poll, doubling each time up to
+	// the ceiling and resetting on a poll that succeeds.
+	backoffBase    = time.Second
+	backoffCeiling = 30 * time.Second
 )
 
 // API is the slice of *sqs.Client this sink calls. Declaring it as an interface
@@ -34,7 +41,8 @@ type API interface {
 }
 
 // Sink is an events.Sink over a single SQS queue. Subscribe (from the embedded
-// Dispatcher) registers handlers; Publish sends; Receive pulls and routes.
+// Dispatcher) registers handlers; Publish sends; Receive, or ReceiveOnce a
+// poll at a time, pulls and routes.
 type Sink struct {
 	*events.Dispatcher
 
@@ -42,6 +50,10 @@ type Sink struct {
 	queueURL string
 	waitSecs int32
 	batch    int32
+	logger   *slog.Logger
+
+	backoffBase    time.Duration
+	backoffCeiling time.Duration
 }
 
 var _ events.Sink = (*Sink)(nil)
@@ -59,14 +71,29 @@ func WithBatchSize(n int32) Option {
 	return func(s *Sink) { s.batch = n }
 }
 
+// WithLogger sets where the receive side logs. Unset, the sink uses
+// slog.Default() as it logs, so a host that calls slog.SetDefault after
+// building the sink is still honoured.
+func WithLogger(l *slog.Logger) Option {
+	return func(s *Sink) { s.logger = l }
+}
+
+// withBackoff sets how long Receive waits after a failed poll: base, doubling
+// each time up to ceiling. The tests shorten it; the defaults suit a queue.
+func withBackoff(base, ceiling time.Duration) Option {
+	return func(s *Sink) { s.backoffBase, s.backoffCeiling = base, ceiling }
+}
+
 // NewSink builds a Sink for the queue at queueURL.
 func NewSink(client API, queueURL string, opts ...Option) *Sink {
 	s := &Sink{
-		Dispatcher: events.NewDispatcher(),
-		client:     client,
-		queueURL:   queueURL,
-		waitSecs:   20,
-		batch:      10,
+		Dispatcher:     events.NewDispatcher(),
+		client:         client,
+		queueURL:       queueURL,
+		waitSecs:       20,
+		batch:          10,
+		backoffBase:    backoffBase,
+		backoffCeiling: backoffCeiling,
 	}
 
 	for _, opt := range opts {
@@ -74,6 +101,15 @@ func NewSink(client API, queueURL string, opts ...Option) *Sink {
 	}
 
 	return s
+}
+
+// log returns the configured logger, or the process default as of now.
+func (s *Sink) log() *slog.Logger {
+	if s.logger != nil {
+		return s.logger
+	}
+
+	return slog.Default()
 }
 
 // Publish sends env to the queue, tagging the event name so Receive can route
@@ -100,36 +136,72 @@ func (s *Sink) Publish(ctx context.Context, env events.Envelope) error {
 	return nil
 }
 
-// Receive long-polls the queue and dispatches each message to its handler,
-// deleting it on success and leaving it (for redelivery after the visibility
-// timeout) on failure. It blocks until ctx is cancelled. Call it once, after
-// the bus has registered its handlers, as the worker's main loop or a goroutine.
+// Receive drives ReceiveOnce until ctx ends, which is the only way it
+// returns. A failed poll is logged and backed off (1s, doubling to 30s,
+// reset by the next good one) rather than retried hot. Call it once, after
+// the bus has registered its handlers, as the worker's main loop or a
+// goroutine.
 func (s *Sink) Receive(ctx context.Context) error {
+	delay := s.backoffBase
+
 	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-
-		out, err := s.client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
-			QueueUrl:              aws.String(s.queueURL),
-			MaxNumberOfMessages:   s.batch,
-			WaitTimeSeconds:       s.waitSecs,
-			MessageAttributeNames: []string{eventAttr, headersAttr},
-		})
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-
-			slog.ErrorContext(ctx, "sqs: receive failed", slog.String("error", err.Error()))
+		_, err := s.ReceiveOnce(ctx)
+		if err == nil {
+			delay = s.backoffBase
 
 			continue
 		}
 
-		for _, m := range out.Messages {
-			s.handle(ctx, m)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		s.log().ErrorContext(ctx, "sqs: receive failed",
+			slog.String("error", err.Error()), slog.Duration("backoff", delay))
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+			delay = min(delay*2, s.backoffCeiling)
 		}
 	}
+}
+
+// ReceiveOnce is one long poll (the configured wait and batch size), each
+// message dispatched to its handler and deleted on success or left for
+// redelivery on failure. It returns how many messages the poll brought back,
+// 0 for an empty one, so a host running its own loop can report on each turn;
+// if ctx ends mid-batch the rest stay queued and the count so far comes back
+// with ctx.Err(). A failed poll returns its error rather than logging it.
+func (s *Sink) ReceiveOnce(ctx context.Context) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	out, err := s.client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
+		QueueUrl:              aws.String(s.queueURL),
+		MaxNumberOfMessages:   s.batch,
+		WaitTimeSeconds:       s.waitSecs,
+		MessageAttributeNames: []string{eventAttr, headersAttr},
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+
+		return 0, err
+	}
+
+	for i, m := range out.Messages {
+		if err := ctx.Err(); err != nil {
+			return i, err
+		}
+
+		s.handle(ctx, m)
+	}
+
+	return len(out.Messages), nil
 }
 
 func (s *Sink) handle(ctx context.Context, m types.Message) {
@@ -151,8 +223,9 @@ func (s *Sink) handle(ctx context.Context, m types.Message) {
 	env := events.Envelope{Name: name, Payload: []byte(body), Headers: headers}
 
 	if err := s.Dispatch(ctx, env); err != nil {
-		// Leave the message; SQS redelivers after the visibility timeout.
-		slog.ErrorContext(ctx, "sqs: handler failed, leaving for redelivery",
+		// Leave the message; SQS redelivers after the visibility timeout. The
+		// bus ErrorHandler has had the error already, so this is a warning.
+		s.log().WarnContext(ctx, "sqs: handler failed, leaving for redelivery",
 			slog.String("event", name), slog.String("error", err.Error()))
 
 		return
@@ -162,7 +235,7 @@ func (s *Sink) handle(ctx context.Context, m types.Message) {
 		QueueUrl:      aws.String(s.queueURL),
 		ReceiptHandle: m.ReceiptHandle,
 	}); err != nil {
-		slog.ErrorContext(ctx, "sqs: delete failed", slog.String("error", err.Error()))
+		s.log().ErrorContext(ctx, "sqs: delete failed", slog.String("error", err.Error()))
 	}
 }
 

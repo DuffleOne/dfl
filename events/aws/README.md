@@ -40,6 +40,19 @@ if err := bus.Emit(ctx, UserCreated{ID: "1", Email: "a@b.com"}); err != nil {
 log.Fatal(sink.Receive(ctx)) // blocking worker loop, runs until ctx ends
 ```
 
+`Receive` is the loop: it polls until `ctx` ends, and a failed poll is logged
+and backed off (1s, doubling to 30s, reset by the next good one). A worker
+with a loop of its own, say a poller that reports health per turn, calls
+`ReceiveOnce` from it instead: one long poll, every message dispatched and
+deleted or left for redelivery exactly as `Receive` would, and the number of
+messages received back, 0 on an empty poll. A failed poll returns its error
+rather than logging it, so the host decides what to do with it.
+
+The sink logs through `slog.Default()` unless `WithLogger` points it
+somewhere else. A handler failure that leaves the message for redelivery
+logs at warn, the bus `ErrorHandler` having had the error already; a failed
+poll or delete logs at error.
+
 Push delivery (SNS/EventBridge) mounts the sink on any mux:
 
 ```go
