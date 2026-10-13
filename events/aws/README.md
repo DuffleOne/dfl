@@ -68,8 +68,8 @@ a poller that reports health each turn, calls `ReceiveOnce` from it instead:
 
 ```go
 for ctx.Err() == nil {
-    n, err := sink.ReceiveOnce(ctx) // one long poll
-    health.Report("events", n, err)
+    poll, err := sink.ReceiveOnce(ctx) // one long poll
+    health.Report("events", err == nil && poll.Failed == 0 && poll.Undeleted == 0)
 
     if err != nil {
         pause(ctx, 5*time.Second) // the wait after a failed poll is yours
@@ -78,10 +78,18 @@ for ctx.Err() == nil {
 ```
 
 One call is one long poll: every message dispatched, then deleted or left for
-redelivery exactly as `Receive` would. It returns how many messages the poll
-brought back, 0 for an empty one. That count includes messages whose handler
-failed; those reach the bus `ErrorHandler`, not this return. A failed poll
-returns its error unlogged and doesn't wait, so the host decides both.
+redelivery exactly as `Receive` would. The `Poll` it returns says what became
+of them:
+
+| Field       | Counts                                                              |
+| ----------- | ------------------------------------------------------------------- |
+| `Received`  | Messages the poll brought back, 0 for an empty one                  |
+| `Handled`   | Handlers that returned nil                                          |
+| `Failed`    | Handlers that returned an error; the message stays for redelivery   |
+| `Undeleted` | Handled, but the delete failed, so the message comes round again    |
+
+A failed poll returns its error unlogged, with a zero `Poll`, and doesn't
+wait, so the host decides what to do about it.
 
 Give each turn a context that outlives the long poll. One that expires
 mid-poll comes back as `ctx.Err()`, which reads like a failure on a queue
@@ -118,8 +126,8 @@ returns in its own time. If it succeeds, its message is still deleted, on a
 context of its own with a 5s deadline, since a handled message left behind
 would only be handled again. The rest of the batch isn't dispatched and comes
 back after the queue's visibility timeout. `Receive` returns `ctx.Err()`; a
-`ReceiveOnce` cut short returns it with the number of messages it got
-through.
+`ReceiveOnce` cut short returns it with the `Poll` so far, `Received` ahead
+of `Handled` plus `Failed` by the messages it never reached.
 
 ### Concurrency
 

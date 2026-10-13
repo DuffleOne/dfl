@@ -26,17 +26,18 @@ import (
 
 // fakeAPI is a scripted stand-in for the SQS client. SendMessage and
 // DeleteMessage record their inputs, DeleteMessage refusing a dead ctx as the
-// real client does. ReceiveMessage answers with each of errs first (a nil one
-// falls through to the batches), then pops a batch per call and, once the
-// script runs dry, blocks until ctx is cancelled, which is how a test stops
-// the receive loop. polls records when each ReceiveMessage arrived.
+// real client does, or failing with deleteErr. ReceiveMessage answers with
+// each of errs first (a nil one falls through to the batches), then pops a
+// batch per call and, once dry, blocks until ctx is cancelled, which is how
+// a test stops the loop. polls records when each ReceiveMessage arrived.
 type fakeAPI struct {
-	mu      sync.Mutex
-	sent    []*awssqs.SendMessageInput
-	errs    []error
-	batches [][]types.Message
-	polls   []time.Time
-	deleted []string
+	mu        sync.Mutex
+	sent      []*awssqs.SendMessageInput
+	errs      []error
+	batches   [][]types.Message
+	polls     []time.Time
+	deleted   []string
+	deleteErr error
 }
 
 func (f *fakeAPI) SendMessage(_ context.Context, in *awssqs.SendMessageInput, _ ...func(*awssqs.Options)) (*awssqs.SendMessageOutput, error) {
@@ -89,6 +90,10 @@ func (f *fakeAPI) next() (batch []types.Message, ok bool, err error) {
 func (f *fakeAPI) DeleteMessage(ctx context.Context, in *awssqs.DeleteMessageInput, _ ...func(*awssqs.Options)) (*awssqs.DeleteMessageOutput, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+
+	if f.deleteErr != nil {
+		return nil, f.deleteErr
 	}
 
 	f.mu.Lock()
@@ -227,8 +232,8 @@ func TestReceiveLeavesFailedMessages(t *testing.T) {
 }
 
 // TestReceiveOnceReportsThePoll: one call is one poll, and what comes back
-// describes it. A failed poll returns its error, an empty one 0, and a batch
-// its size with every message handled and deleted.
+// describes it. A failed poll returns its error, an empty one the zero Poll,
+// and a batch its size with every message handled and deleted.
 func TestReceiveOnceReportsThePoll(t *testing.T) {
 	boom := errors.New("boom")
 	fake := &fakeAPI{
@@ -248,16 +253,17 @@ func TestReceiveOnceReportsThePoll(t *testing.T) {
 		return nil
 	})
 
-	if n, err := sink.ReceiveOnce(t.Context()); n != 0 || !errors.Is(err, boom) {
-		t.Errorf("failed poll returned (%d, %v), want (0, boom)", n, err)
+	if poll, err := sink.ReceiveOnce(t.Context()); poll != (sqs.Poll{}) || !errors.Is(err, boom) {
+		t.Errorf("failed poll returned (%+v, %v), want the zero Poll and boom", poll, err)
 	}
 
-	if n, err := sink.ReceiveOnce(t.Context()); n != 0 || err != nil {
-		t.Errorf("empty poll returned (%d, %v), want (0, nil)", n, err)
+	if poll, err := sink.ReceiveOnce(t.Context()); poll != (sqs.Poll{}) || err != nil {
+		t.Errorf("empty poll returned (%+v, %v), want the zero Poll and nil", poll, err)
 	}
 
-	if n, err := sink.ReceiveOnce(t.Context()); n != 2 || err != nil {
-		t.Errorf("poll of two returned (%d, %v), want (2, nil)", n, err)
+	want := sqs.Poll{Received: 2, Handled: 2}
+	if poll, err := sink.ReceiveOnce(t.Context()); poll != want || err != nil {
+		t.Errorf("poll of two returned (%+v, %v), want (%+v, nil)", poll, err, want)
 	}
 
 	if handled != 2 {
@@ -270,7 +276,7 @@ func TestReceiveOnceReportsThePoll(t *testing.T) {
 }
 
 // TestReceiveOnceStopsWhenContextEnds: a ctx that ends mid-batch stops the
-// dispatching there and the count so far comes back with ctx.Err(). The
+// dispatching there and the Poll so far comes back with ctx.Err(). The
 // message already handled is still deleted, on a context of its own, or it
 // would come round again; the ones not reached stay on the queue. A dead ctx
 // doesn't poll at all.
@@ -295,21 +301,21 @@ func TestReceiveOnceStopsWhenContextEnds(t *testing.T) {
 		return nil
 	})
 
-	n, err := sink.ReceiveOnce(ctx)
+	poll, err := sink.ReceiveOnce(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("ReceiveOnce returned %v, want context.Canceled", err)
 	}
 
-	if n != 1 || handled != 1 {
-		t.Errorf("count %d, handled %d, want 1 and 1: dispatching should stop once ctx ends", n, handled)
+	if want := (sqs.Poll{Received: 3, Handled: 1}); poll != want || handled != 1 {
+		t.Errorf("poll %+v, handler ran %d times, want %+v and once: dispatching should stop once ctx ends", poll, handled, want)
 	}
 
 	if len(fake.deleted) != 1 || fake.deleted[0] != "r-1" {
 		t.Errorf("deleted = %v, want [r-1]: a handled message is deleted even though ctx has ended, the rest stay", fake.deleted)
 	}
 
-	if n, err := sink.ReceiveOnce(ctx); n != 0 || !errors.Is(err, context.Canceled) {
-		t.Errorf("ReceiveOnce on a dead ctx returned (%d, %v), want (0, context.Canceled)", n, err)
+	if poll, err := sink.ReceiveOnce(ctx); poll != (sqs.Poll{}) || !errors.Is(err, context.Canceled) {
+		t.Errorf("ReceiveOnce on a dead ctx returned (%+v, %v), want the zero Poll and context.Canceled", poll, err)
 	}
 
 	if len(fake.polls) != 1 {
@@ -426,8 +432,8 @@ func TestReceiveOnceRunsInParallel(t *testing.T) {
 
 	for range loops {
 		wg.Go(func() {
-			if n, err := sink.ReceiveOnce(t.Context()); n != 1 || err != nil {
-				t.Errorf("ReceiveOnce returned (%d, %v), want (1, nil)", n, err)
+			if poll, err := sink.ReceiveOnce(t.Context()); poll.Handled != 1 || err != nil {
+				t.Errorf("ReceiveOnce returned (%+v, %v), want one handled and nil", poll, err)
 			}
 		})
 	}
@@ -439,9 +445,9 @@ func TestReceiveOnceRunsInParallel(t *testing.T) {
 	}
 }
 
-// TestWithLoggerHearsTheNack: a handler failure leaves the message and says
-// so on the configured logger at warn, not error, since the bus ErrorHandler
-// has had the error already.
+// TestWithLoggerHearsTheNack: a handler failure leaves the message, counts
+// as Failed on the Poll, and says so on the configured logger at warn, not
+// error, since the bus ErrorHandler has had the error already.
 func TestWithLoggerHearsTheNack(t *testing.T) {
 	var buf bytes.Buffer
 
@@ -452,8 +458,9 @@ func TestWithLoggerHearsTheNack(t *testing.T) {
 		return events.New("boom", nil)
 	})
 
-	if n, err := sink.ReceiveOnce(t.Context()); n != 1 || err != nil {
-		t.Fatalf("ReceiveOnce returned (%d, %v), want (1, nil): a nack is not a failed poll", n, err)
+	want := sqs.Poll{Received: 1, Failed: 1}
+	if poll, err := sink.ReceiveOnce(t.Context()); poll != want || err != nil {
+		t.Fatalf("ReceiveOnce returned (%+v, %v), want (%+v, nil): a nack is not a failed poll", poll, err, want)
 	}
 
 	line := buf.String()
@@ -466,6 +473,32 @@ func TestWithLoggerHearsTheNack(t *testing.T) {
 
 	if len(fake.deleted) != 0 {
 		t.Errorf("deleted = %v, want none", fake.deleted)
+	}
+}
+
+// TestPollCountsAFailedDelete: a message handled but not deleted is Handled
+// and Undeleted both, since the work was done and it's coming round again
+// anyway, and the failure is logged at error with the event's name.
+func TestPollCountsAFailedDelete(t *testing.T) {
+	var buf bytes.Buffer
+
+	fake := &fakeAPI{
+		batches:   [][]types.Message{{message("user.created", `{"id":"1"}`, "r-1")}},
+		deleteErr: errors.New("boom"),
+	}
+	sink := sqs.NewSink(fake, "https://queue.test/q", sqs.WithLogger(slog.New(slog.NewTextHandler(&buf, nil))))
+
+	sink.Subscribe("user.created", func(_ context.Context, _ events.Envelope) error { return nil })
+
+	want := sqs.Poll{Received: 1, Handled: 1, Undeleted: 1}
+	if poll, err := sink.ReceiveOnce(t.Context()); poll != want || err != nil {
+		t.Errorf("ReceiveOnce returned (%+v, %v), want (%+v, nil)", poll, err, want)
+	}
+
+	for _, want := range []string{"level=ERROR", `msg="sqs: delete failed"`, "event=user.created"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("log = %q, want it to contain %q", buf.String(), want)
+		}
 	}
 }
 

@@ -69,14 +69,17 @@ func run() error {
 	for ctx.Err() == nil {
 		started := time.Now()
 
-		n, err := sink.ReceiveOnce(ctx)
+		poll, err := sink.ReceiveOnce(ctx)
 
 		switch {
 		case err == nil:
-			// Where a real host tells its health check the turn went fine.
-			logger.InfoContext(ctx, "turn", slog.Int("messages", n), slog.Duration("took", time.Since(started)))
+			// Where a real host tells its health check how the turn went.
+			logger.InfoContext(ctx, "turn",
+				slog.Int("received", poll.Received), slog.Int("handled", poll.Handled),
+				slog.Int("failed", poll.Failed), slog.Int("undeleted", poll.Undeleted),
+				slog.Duration("took", time.Since(started)))
 		case ctx.Err() != nil:
-			logger.InfoContext(ctx, "stopping", slog.Int("handled_this_turn", n))
+			logger.InfoContext(ctx, "stopping", slog.Int("handled_this_turn", poll.Handled))
 		default:
 			// ReceiveOnce never waits after a failed poll: the pause is ours.
 			logger.ErrorContext(ctx, "turn failed", slog.String("error", err.Error()))

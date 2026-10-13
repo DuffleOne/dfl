@@ -60,6 +60,18 @@ type Sink struct {
 
 var _ events.Sink = (*Sink)(nil)
 
+// Poll is what one ReceiveOnce did with the messages it received. Handled
+// ran without error; Failed had a handler error and were left for
+// redelivery. Undeleted counts handled messages whose delete then failed,
+// so they will come round again. When ctx ends mid-batch, Received runs
+// ahead of Handled plus Failed by the messages never dispatched.
+type Poll struct {
+	Received  int
+	Handled   int
+	Failed    int
+	Undeleted int
+}
+
 // Option configures a Sink.
 type Option func(*Sink)
 
@@ -184,13 +196,13 @@ func (s *Sink) Receive(ctx context.Context) error {
 
 // ReceiveOnce is one long poll (the configured wait and batch size), each
 // message dispatched to its handler and deleted on success or left for
-// redelivery on failure. It returns how many messages the poll brought back,
-// 0 for an empty one, so a host running its own loop can report on each turn;
-// if ctx ends mid-batch the rest stay queued and the count so far comes back
-// with ctx.Err(). A failed poll returns its error rather than logging it.
-func (s *Sink) ReceiveOnce(ctx context.Context) (int, error) {
+// redelivery on failure. The Poll it returns says what became of them, so a
+// host running its own loop can report on each turn; if ctx ends mid-batch
+// the rest stay queued and the Poll so far comes back with ctx.Err(). A
+// failed poll returns its error rather than logging it.
+func (s *Sink) ReceiveOnce(ctx context.Context) (Poll, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return Poll{}, err
 	}
 
 	out, err := s.client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
@@ -201,24 +213,28 @@ func (s *Sink) ReceiveOnce(ctx context.Context) (int, error) {
 	})
 	if err != nil {
 		if ctx.Err() != nil {
-			return 0, ctx.Err()
+			return Poll{}, ctx.Err()
 		}
 
-		return 0, err
+		return Poll{}, err
 	}
 
-	for i, m := range out.Messages {
+	poll := Poll{Received: len(out.Messages)}
+
+	for _, m := range out.Messages {
 		if err := ctx.Err(); err != nil {
-			return i, err
+			return poll, err
 		}
 
-		s.handle(ctx, m)
+		s.handle(ctx, m, &poll)
 	}
 
-	return len(out.Messages), nil
+	return poll, nil
 }
 
-func (s *Sink) handle(ctx context.Context, m types.Message) {
+// handle dispatches one message and deletes it if that worked, counting the
+// outcome on poll.
+func (s *Sink) handle(ctx context.Context, m types.Message, poll *Poll) {
 	var name, body string
 
 	if a, ok := m.MessageAttributes[eventAttr]; ok && a.StringValue != nil {
@@ -237,6 +253,8 @@ func (s *Sink) handle(ctx context.Context, m types.Message) {
 	env := events.Envelope{Name: name, Payload: []byte(body), Headers: headers}
 
 	if err := s.Dispatch(ctx, env); err != nil {
+		poll.Failed++
+
 		// Leave the message; SQS redelivers after the visibility timeout. The
 		// bus ErrorHandler has had the error already, so this is a warning.
 		s.log().WarnContext(ctx, "sqs: handler failed, leaving for redelivery",
@@ -244,6 +262,8 @@ func (s *Sink) handle(ctx context.Context, m types.Message) {
 
 		return
 	}
+
+	poll.Handled++
 
 	// The handler is done, so the delete goes out even if ctx ended while it
 	// ran (a shutdown, say): skip it and the message is redelivered and
@@ -255,6 +275,8 @@ func (s *Sink) handle(ctx context.Context, m types.Message) {
 		QueueUrl:      aws.String(s.queueURL),
 		ReceiptHandle: m.ReceiptHandle,
 	}); err != nil {
+		poll.Undeleted++
+
 		s.log().ErrorContext(ctx, "sqs: delete failed",
 			slog.String("event", name), slog.String("error", err.Error()))
 	}
