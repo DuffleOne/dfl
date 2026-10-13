@@ -1,10 +1,12 @@
 package http_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,6 +59,34 @@ func TestRecovererConvertsPanicTo500(t *testing.T) {
 
 	if strings.Contains(rec.Body.String(), "secret") {
 		t.Errorf("body = %q, the panic value must not reach the wire", rec.Body.String())
+	}
+}
+
+// TestRecovererLogsToTheRoutersLogger: WithLogger is where Recoverer puts
+// the panic and its stack, for the router and for a group cut from it.
+func TestRecovererLogsToTheRoutersLogger(t *testing.T) {
+	var buf bytes.Buffer
+
+	mux := http.NewServeMux()
+	r := dflhttp.NewRouter(mux, dflhttp.WithLogger(slog.New(slog.NewTextHandler(&buf, nil))))
+	r.Use(dflhttp.Recoverer())
+
+	r.Group("/api").Handle(http.MethodGet, "/boom",
+		func(_ context.Context, _ *dflhttp.Empty) (*string, error) {
+			panic("kaboom")
+		})
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/boom", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+
+	for _, want := range []string{"level=ERROR", `msg="handler panic"`, "panic=kaboom", "stack="} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("log = %q, want it to contain %q", buf.String(), want)
+		}
 	}
 }
 

@@ -208,7 +208,7 @@ func wait(ctx context.Context, d time.Duration) error {
 }
 
 func logExhausted(ctx context.Context, env Envelope, attempts int, action string, err error) {
-	slog.ErrorContext(ctx, "events: retries exhausted",
+	loggerFrom(ctx).ErrorContext(ctx, "events: retries exhausted",
 		slog.String("event", env.Name),
 		slog.Int("attempts", attempts),
 		slog.String("action", action),

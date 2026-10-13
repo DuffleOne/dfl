@@ -133,6 +133,26 @@ db.TxCtx(ctx, func(ctx context.Context) error {
 More: [pgxdb guide](./db/pgxdb/README.md) ·
 [runnable examples](./db/pgxdb/examples)
 
+## Logging
+
+The packages log little, and what they do log goes through `log/slog`: a
+recovered panic, an event handler that failed, a retry, a receive loop that
+lost its queue. By default that is `slog.Default()`, read each time
+something logs, so setting the default once in `main` covers all of them,
+whatever order things are built in.
+
+To send one of them somewhere else, every constructor that logs takes the
+same option:
+
+```go
+r := dflhttp.NewRouter(mux, dflhttp.WithLogger(logger))
+bus := events.NewBus(sink, events.WithLogger(logger))
+db, err := pgxdb.New(ctx, url, pgxdb.WithLogger(logger))
+
+queue := sqs.NewSink(client, queueURL, sqs.WithLogger(logger))          // events/aws
+pull := pubsub.NewPullSink(client, "worker", pubsub.WithLogger(logger)) // events/gcp
+```
+
 ## Development
 
 ```

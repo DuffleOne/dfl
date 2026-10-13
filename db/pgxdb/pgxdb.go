@@ -36,7 +36,8 @@ type Querier interface {
 
 // DB wraps a *pgxpool.Pool with the helpers in this package.
 type DB struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	logger *slog.Logger
 }
 
 var (
@@ -44,9 +45,28 @@ var (
 	_ Querier = (pgx.Tx)(nil)
 )
 
-// Option adjusts the parsed pool config before New builds the pool: exec
-// mode, pool sizing, tracers, anything on *pgxpool.Config.
-type Option func(*pgxpool.Config)
+// Config is what an Option adjusts before New builds the pool: the parsed
+// *pgxpool.Config, embedded so exec mode, pool sizing, tracers and the rest
+// are set on it directly, with the package's own settings beside it.
+type Config struct {
+	*pgxpool.Config
+
+	// Logger is where the package logs; nil means slog.Default() as of
+	// each log.
+	Logger *slog.Logger
+}
+
+// Option adjusts the Config before New builds the pool.
+type Option func(*Config)
+
+// WithLogger sets where the package logs, which today is the warning
+// between serializable retries. Unset, that's slog.Default() as of each
+// log, so a host that calls slog.SetDefault after New is still honoured.
+func WithLogger(l *slog.Logger) Option {
+	return func(cfg *Config) {
+		cfg.Logger = l
+	}
+}
 
 // New opens a pool against connectionURL and pings to verify it's reachable.
 // The exec mode defaults to DescribeExec rather than pgx's statement cache:
@@ -55,18 +75,20 @@ type Option func(*pgxpool.Config)
 // where plain Exec mode guesses and breaks json and enum parameters.
 // Options run after that default, so a caller can put the cache back.
 func New(ctx context.Context, connectionURL string, opts ...Option) (*DB, error) {
-	cfg, err := pgxpool.ParseConfig(connectionURL)
+	poolCfg, err := pgxpool.ParseConfig(connectionURL)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeDescribeExec
+	poolCfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeDescribeExec
+
+	cfg := &Config{Config: poolCfg}
 
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	pool, err := pgxpool.NewWithConfig(ctx, cfg.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +99,16 @@ func New(ctx context.Context, connectionURL string, opts ...Option) (*DB, error)
 		return nil, err
 	}
 
-	return &DB{pool: pool}, nil
+	return &DB{pool: pool, logger: cfg.Logger}, nil
+}
+
+// log returns the configured logger, or the process default as of now.
+func (db *DB) log() *slog.Logger {
+	if db.logger != nil {
+		return db.logger
+	}
+
+	return slog.Default()
 }
 
 // Close releases the underlying pool.
@@ -132,7 +163,7 @@ func (db *DB) TxRead(ctx context.Context, f func(tx pgx.Tx) error) error {
 func (db *DB) TxSerializable(ctx context.Context, f func(tx pgx.Tx) error) error {
 	opts := pgx.TxOptions{IsoLevel: pgx.Serializable}
 
-	return retrySerializable(ctx, maxSerializableTxRetries, func() error {
+	return db.retrySerializable(ctx, maxSerializableTxRetries, func() error {
 		return db.tx(ctx, opts, f)
 	})
 }
@@ -140,8 +171,8 @@ func (db *DB) TxSerializable(ctx context.Context, f func(tx pgx.Tx) error) error
 // retrySerializable runs op up to maxRetries+1 times (one initial try plus
 // maxRetries retries). It retries only when op returns a serialization
 // failure; any other error, or a cancelled context, ends the loop. Between
-// attempts it logs a warn through slog.
-func retrySerializable(ctx context.Context, maxRetries int, op func() error) error {
+// attempts it logs a warn, to WithLogger's logger or slog's default.
+func (db *DB) retrySerializable(ctx context.Context, maxRetries int, op func() error) error {
 	var err error
 
 	for attempt := range maxRetries + 1 {
@@ -158,7 +189,7 @@ func retrySerializable(ctx context.Context, maxRetries int, op func() error) err
 			break
 		}
 
-		slog.WarnContext(ctx, "retrying serializable transaction",
+		db.log().WarnContext(ctx, "retrying serializable transaction",
 			slog.Int("attempt", attempt+1),
 			slog.String("error", err.Error()),
 		)

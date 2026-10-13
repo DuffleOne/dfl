@@ -193,6 +193,13 @@ this for you, so registered first it should be in every service:
 r.Use(dflhttp.Recoverer())
 ```
 
+It logs to `slog.Default()` unless the router was built with a logger, which
+groups cut from it inherit:
+
+```go
+r := dflhttp.NewRouter(mux, dflhttp.WithLogger(logger))
+```
+
 `RequestMeta(trustForwarded)` records cross-cutting request metadata on the
 context, read back with `dflhttp.ClientIP(ctx)` and `dflhttp.UserAgent(ctx)`.
 These are wanted by a minority of handlers (rate limiting, logging,

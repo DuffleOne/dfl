@@ -12,9 +12,10 @@ import (
 
 // Recoverer returns middleware that converts a handler panic into a 500
 // "unknown" error instead of taking the connection down with nothing
-// written. The value and stack go to slog, not the wire.
-// http.ErrAbortHandler re-panics untouched, per net/http's contract.
-// Register it first so it also covers everything registered after.
+// written. The value and stack go to the router's logger (WithLogger, or
+// slog's default), not the wire. http.ErrAbortHandler re-panics untouched,
+// per net/http's contract. Register it first so it also covers everything
+// registered after.
 func Recoverer() Middleware {
 	return func(next HandlerFunc) HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) (err error) {
@@ -28,7 +29,7 @@ func Recoverer() Middleware {
 					panic(p)
 				}
 
-				slog.ErrorContext(r.Context(), "handler panic",
+				loggerFrom(r.Context()).ErrorContext(r.Context(), "handler panic",
 					slog.Any("panic", p),
 					slog.String("stack", string(debug.Stack())),
 				)

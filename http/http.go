@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"slices"
 )
@@ -108,6 +109,7 @@ type Router struct {
 	coercer       Coercer
 	errorWriter   ErrorWriter
 	requestParser *RequestParser
+	logger        *slog.Logger
 	prefix        string
 	middleware    []Middleware
 }
@@ -193,7 +195,14 @@ func (r *Router) HandleFunc(method, path string, h HandlerFunc, mw ...Middleware
 		writeErr = DefaultErrorWriter(r.coercer)
 	}
 
+	logger := r.logger
+
 	r.register(method, fullPath, func(w http.ResponseWriter, req *http.Request) {
+		// Middleware has no router to ask, so the logger rides the request.
+		if logger != nil {
+			req = req.WithContext(context.WithValue(req.Context(), loggerKey{}, logger))
+		}
+
 		if err := wrapped(w, req); err != nil {
 			writeErr(w, req, err)
 		}
@@ -211,6 +220,7 @@ func (r *Router) Group(prefix string) *Router {
 		coercer:       r.coercer,
 		errorWriter:   r.errorWriter,
 		requestParser: r.requestParser,
+		logger:        r.logger,
 		prefix:        r.prefix + prefix,
 		middleware:    append([]Middleware(nil), r.middleware...),
 	}

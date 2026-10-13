@@ -46,6 +46,13 @@ bus.On(welcome)
 log.Fatal(sink.Receive(ctx)) // blocking worker loop, started after handlers are registered
 ```
 
+A receiver that stops on an error (a subscription that doesn't exist, say)
+is logged at error, to `slog.Default()` unless the sink was given a logger:
+
+```go
+sink := pubsub.NewPullSink(client, "welcome-service", pubsub.WithLogger(logger))
+```
+
 Runnable examples in [`examples/pull`](./examples/pull) and
 [`examples/push`](./examples/push).
 

@@ -89,7 +89,8 @@ func Subscribe(bus *events.Bus, mailer *Mailer) {
 `On` delivery is asynchronous. A consumer error can't reach whoever called
 `Emit`, so it goes to the bus `ErrorHandler` (and back to the sink, which is
 how a durable transport knows to redeliver). The default handler logs via
-`slog`; point it at your alerting with `events.WithErrorHandler`.
+`slog`; point it at your alerting with `events.WithErrorHandler`, or just
+its logging somewhere else with `events.WithLogger`.
 
 ## The handlers
 
@@ -225,6 +226,11 @@ service that can't serve requests.
 Registration order matters in one place only: install plugins and call
 `bus.Use` before registering handlers, since both apply to handlers
 registered afterwards. The same goes for `r.Use` and routes.
+
+Nothing above mentions a logger because none is needed: the router, the bus
+and the pool all log through `slog.Default()`, read as they log, so one
+`slog.SetDefault` at the top of `main` covers them. Each constructor also
+takes a `WithLogger` for when one of them should go somewhere else.
 
 ## Emitting and transactions
 
@@ -362,7 +368,8 @@ The parts are designed to be swapped without the application changing:
 - MemSink to a real transport: construct an SQS or Pub/Sub sink from
   [`events/aws`](../events/aws) or [`events/gcp`](../events/gcp) instead.
   Handlers, events, and emit sites stay identical; a worker binary calls
-  `sink.Receive(ctx)`, or a push subscription POSTs into the mounted sink.
+  `sink.Receive(ctx)` (or, on SQS, `ReceiveOnce` from a loop it already
+  has), or a push subscription POSTs into the mounted sink.
 - Consumers as HTTP endpoints: `bus.RegisterEndpoint(rg, handler)` serves
   any consumer at `POST /events/{name}`, useful when the transport pushes
   events over HTTP or another service wants to hand you one synchronously.

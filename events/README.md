@@ -60,6 +60,14 @@ own goroutines, and a handler error goes to the bus `ErrorHandler` (by
 default it logs via `slog`; swap it with `WithErrorHandler`). The error is
 also returned to the sink, so a durable transport can nack and redeliver.
 
+What the bus logs, that default handler and `Retry` running out of
+attempts, goes to `slog.Default()` unless the bus is given a logger of its
+own:
+
+```go
+bus := events.NewBus(sink, events.WithLogger(logger))
+```
+
 The same handler function can instead (or additionally) be served over
 HTTP:
 
