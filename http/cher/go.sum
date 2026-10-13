@@ -1,8 +1,8 @@
-github.com/go-chi/chi/v5 v5.3.2 h1:5YQkICvTCSZ25hoRsyJazN0scjzKGiu4VAUc7H1o1nY=
-github.com/go-chi/chi/v5 v5.3.2/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
+github.com/go-chi/chi/v5 v5.4.0 h1:+ufzvFTGKyin26Or5DLrlIDq4ygIDBVcj7oVNeeaYFE=
+github.com/go-chi/chi/v5 v5.4.0/go.mod h1:d1IG7GtKPSjPyBP365PH8sAGVHk3qfB/IhjFNRH1wWM=
 github.com/matryer/is v1.4.1 h1:55ehd8zaGABKLXQUe2awZ99BD/PTc2ls+KV/dXphgEQ=
 github.com/matryer/is v1.4.1/go.mod h1:8I/i5uYgLzgsgEloJE1U6xx5HkBQpAZvepWuujKwMRU=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
-github.com/wearemojo/mojo-public-go v0.0.0-20260821110004-03e46fad28bb h1:hHTzfbuaFtjbaMy+zAYW8q15DwOltr8BGIEhDYxJw5c=
-github.com/wearemojo/mojo-public-go v0.0.0-20260821110004-03e46fad28bb/go.mod h1:WgUgXILk6pGigxcVZaYysO5GPkY3KJAUp6aHG0CiDEk=
+github.com/wearemojo/mojo-public-go v0.0.0-20261013113415-3581faf8fae0 h1:hrgkIedSAIvmnp/jadSpVW6WQNNLGqDxMFyf8EsniSw=
+github.com/wearemojo/mojo-public-go v0.0.0-20261013113415-3581faf8fae0/go.mod h1:RiSWDwuZVk5/TaJDNKQxXTZ1mlYRYCBws01jhnfWl5c=
