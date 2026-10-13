@@ -32,6 +32,7 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         module: [".", "http/cher", "events/aws", "events/gcp", "events/otel"]
     steps:
@@ -40,10 +41,11 @@ jobs:
         with:
           go-version: "1.27"
           cache-dependency-path: "**/go.sum"
-      # v2.13.1 release binaries are built with Go 1.27 and vendor staticcheck
-      # v0.8.0, which retires the RC-era workarounds: the from-source build and
-      # the standalone staticcheck step.
+      # Go 1.27.2 writes export data v5. golangci-lint v2.13.x vendors x/tools
+      # v0.49.0, which only reads up to v4, so every stdlib import fails
+      # typecheck. v2.14.0 vendors x/tools v0.50.0 and reads v5. The Go the
+      # binary was built with (1.27.0 for both) isn't what decides it.
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.1
+          version: v2.14.0
           working-directory: ${{ matrix.module }}
