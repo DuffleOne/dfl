@@ -10,7 +10,7 @@ require (
 	cloud.google.com/go/pubsub/v2 v2.6.2
 	github.com/duffleone/dfl v0.0.0-20260821111237-c605aa1ea07c
 	google.golang.org/api v0.293.0
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 )
 
 require (
