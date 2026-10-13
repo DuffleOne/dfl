@@ -5,6 +5,7 @@ updates:
   - package-ecosystem: "gomod"
     directories:
       - "/"
+      - "/http/cher"
       - "/events/aws"
       - "/events/gcp"
       - "/events/otel"

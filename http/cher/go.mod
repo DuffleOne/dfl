@@ -11,8 +11,8 @@ go 1.27
 replace github.com/duffleone/dfl => ../..
 
 require (
-	github.com/duffleone/dfl v0.0.0-20260821111237-c605aa1ea07c
-	github.com/wearemojo/mojo-public-go v0.0.0-20260821110004-03e46fad28bb
+	github.com/duffleone/dfl v0.0.0-20261013131932-5debd659452b
+	github.com/wearemojo/mojo-public-go v0.0.0-20261013113415-3581faf8fae0
 )
 
 require github.com/pkg/errors v0.9.1 // indirect
