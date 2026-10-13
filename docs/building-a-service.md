@@ -89,7 +89,8 @@ func Subscribe(bus *events.Bus, mailer *Mailer) {
 `On` delivery is asynchronous. A consumer error can't reach whoever called
 `Emit`, so it goes to the bus `ErrorHandler` (and back to the sink, which is
 how a durable transport knows to redeliver). The default handler logs via
-`slog`; point it at your alerting with `events.WithErrorHandler`.
+`slog`; point it at your alerting with `events.WithErrorHandler`, or just
+its logging somewhere else with `events.WithLogger`.
 
 ## The handlers
 
@@ -225,6 +226,11 @@ service that can't serve requests.
 Registration order matters in one place only: install plugins and call
 `bus.Use` before registering handlers, since both apply to handlers
 registered afterwards. The same goes for `r.Use` and routes.
+
+Nothing above mentions a logger because none is needed: the router, the bus
+and the pool all log through `slog.Default()`, read as they log, so one
+`slog.SetDefault` at the top of `main` covers them. Each constructor also
+takes a `WithLogger` for when one of them should go somewhere else.
 
 ## Emitting and transactions
 

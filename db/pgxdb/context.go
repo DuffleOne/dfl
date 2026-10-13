@@ -60,7 +60,7 @@ func (db *DB) TxReadCtx(ctx context.Context, f func(ctx context.Context) error) 
 func (db *DB) TxSerializableCtx(ctx context.Context, f func(ctx context.Context) error) error {
 	opts := pgx.TxOptions{IsoLevel: pgx.Serializable}
 
-	return retrySerializable(ctx, maxSerializableTxRetries, func() error {
+	return db.retrySerializable(ctx, maxSerializableTxRetries, func() error {
 		return db.tx(ctx, opts, func(tx pgx.Tx) error {
 			return f(contextWithTx(ctx, tx))
 		})

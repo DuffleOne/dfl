@@ -11,14 +11,22 @@ db, err := pgxdb.New(ctx, os.Getenv("DATABASE_URL")) // pools + pings
 defer db.Close()
 ```
 
-`New` takes options that adjust the parsed `*pgxpool.Config` before the
-pool is built, so pool sizing and tracing don't force you off the
-constructor:
+`New` takes options that adjust a `*pgxdb.Config` before the pool is built.
+It embeds the parsed `*pgxpool.Config`, so pool sizing and tracing are set
+on it directly and don't force you off the constructor:
 
 ```go
-db, err := pgxdb.New(ctx, url, func(cfg *pgxpool.Config) {
+db, err := pgxdb.New(ctx, url, func(cfg *pgxdb.Config) {
     cfg.MaxConns = 20
 })
+```
+
+Beside the pool config sits the package's own setting, the logger.
+`WithLogger` is the option for it; unset, the package logs to
+`slog.Default()`:
+
+```go
+db, err := pgxdb.New(ctx, url, pgxdb.WithLogger(logger))
 ```
 
 The default query exec mode is `DescribeExec`, not pgx's statement cache.
@@ -154,7 +162,8 @@ db.TxSerializable(ctx, f) // serializable, retried on conflict
 `TxSerializable` retries the closure up to three times when postgres
 reports a serialization failure (`40001`) or a deadlock (`40P01`), both
 equally transient and equally safe to re-run as a fresh transaction,
-logging a warning between attempts. The closure must therefore be safe to
+logging a warning between attempts (to `WithLogger`'s logger, or
+`slog.Default()`). The closure must therefore be safe to
 re-run: pure reads and writes are fine, but don't send emails or publish
 events from inside one. Any other error, or a cancelled context, returns
 immediately. Conflicts surfacing at `COMMIT` rather than inside the

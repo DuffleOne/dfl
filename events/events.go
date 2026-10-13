@@ -55,8 +55,8 @@ type Coercer func(error) *EventError
 
 // ErrorHandler receives a handler failure from an On subscription. Because On
 // delivery is asynchronous, a handler error can't be returned to the Emit
-// caller, so it lands here instead. The default logs via slog at error level;
-// override with WithErrorHandler.
+// caller, so it lands here instead. The default logs at error level, to
+// WithLogger's logger or slog's default; override with WithErrorHandler.
 type ErrorHandler func(ctx context.Context, env Envelope, err *EventError)
 
 // Plugin is a cross-cutting extension installed with WithPlugins, wrapping
@@ -107,6 +107,7 @@ type Bus struct {
 	validator  Validator
 	coercer    Coercer
 	onError    ErrorHandler
+	logger     *slog.Logger
 	middleware []Middleware
 	publishMW  []PublishMiddleware
 }
@@ -131,7 +132,7 @@ func WithCoercer(c Coercer) Option {
 }
 
 // WithErrorHandler sets the ErrorHandler that receives async handler failures.
-// Defaults to a handler that logs via slog.
+// Defaults to a handler that logs at error, through WithLogger's logger.
 func WithErrorHandler(h ErrorHandler) Option {
 	return func(b *Bus) {
 		b.onError = h
@@ -207,6 +208,8 @@ func (b *Bus) On[E Event](handler func(context.Context, E) error, mw ...Middlewa
 	wrapped := applyMiddleware(base, combineChain(b.middleware, mw))
 
 	deliver := func(ctx context.Context, env Envelope) error {
+		ctx = b.withLogger(ctx)
+
 		err := wrapped(ctx, env)
 		if err == nil {
 			return nil
@@ -301,7 +304,7 @@ func nameOf[E Event]() (string, error) {
 }
 
 func defaultErrorHandler(ctx context.Context, env Envelope, err *EventError) {
-	slog.ErrorContext(ctx, "events: handler failed",
+	loggerFrom(ctx).ErrorContext(ctx, "events: handler failed",
 		slog.String("event", env.Name),
 		slog.String("error", err.Error()),
 	)

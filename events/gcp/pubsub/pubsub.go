@@ -78,6 +78,7 @@ type PullSink struct {
 	client     *pubsub.Client
 	publishers *publishers
 	consumer   string
+	logger     *slog.Logger
 
 	mu   sync.Mutex
 	subs map[string]events.HandlerFunc
@@ -85,15 +86,40 @@ type PullSink struct {
 
 var _ events.Sink = (*PullSink)(nil)
 
+// PullOption configures a PullSink.
+type PullOption func(*PullSink)
+
+// WithLogger sets where the pull side logs, which today is a receiver that
+// stops on an error. Unset, that's slog.Default() as of each log, so a host
+// that calls slog.SetDefault after building the sink is still honoured.
+func WithLogger(l *slog.Logger) PullOption {
+	return func(s *PullSink) { s.logger = l }
+}
+
 // NewPullSink builds a pull sink. consumer names this service's subscriptions,
 // so event "user.created" pulls from subscription "user.created.<consumer>".
-func NewPullSink(client *pubsub.Client, consumer string) *PullSink {
-	return &PullSink{
+func NewPullSink(client *pubsub.Client, consumer string, opts ...PullOption) *PullSink {
+	s := &PullSink{
 		client:     client,
 		publishers: newPublishers(client),
 		consumer:   consumer,
 		subs:       map[string]events.HandlerFunc{},
 	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
+}
+
+// log returns the configured logger, or the process default as of now.
+func (s *PullSink) log() *slog.Logger {
+	if s.logger != nil {
+		return s.logger
+	}
+
+	return slog.Default()
 }
 
 // Publish sends env to the event's topic and blocks on the ack.
@@ -150,7 +176,7 @@ func (s *PullSink) receive(ctx context.Context, name string, deliver events.Hand
 		m.Ack()
 	})
 	if err != nil && ctx.Err() == nil {
-		slog.ErrorContext(ctx, "pubsub: receive stopped",
+		s.log().ErrorContext(ctx, "pubsub: receive stopped",
 			slog.String("event", name), slog.String("error", err.Error()))
 	}
 }

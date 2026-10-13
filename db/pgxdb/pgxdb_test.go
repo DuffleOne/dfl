@@ -1,14 +1,17 @@
 package pgxdb
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Tests in this package cover the pure logic that doesn't need a database:
@@ -17,10 +20,9 @@ import (
 // (Tx, TxRead, Get, Select) need a live connection and are best covered by
 // integration tests against a real or containerised database.
 
-func init() {
-	// Quiet down the retry warn logs so test output stays readable.
-	slog.SetDefault(slog.New(slog.DiscardHandler))
-}
+// quiet is a DB with no pool and a logger that discards, which is all the
+// retry loop needs and keeps its warnings out of the test output.
+var quiet = &DB{logger: slog.New(slog.DiscardHandler)}
 
 // TestIsSerializationFailure pins down which errors are treated as
 // retry-eligible. Only a *pgconn.PgError with the SerializationFailure or
@@ -97,7 +99,7 @@ func TestRetrySerializableSucceedsFirstTry(t *testing.T) {
 	calls := 0
 	op := scriptedOp(t, []error{nil}, &calls)
 
-	if err := retrySerializable(t.Context(), 3, op); err != nil {
+	if err := quiet.retrySerializable(t.Context(), 3, op); err != nil {
 		t.Errorf("retrySerializable = %v, want nil", err)
 	}
 
@@ -114,7 +116,7 @@ func TestRetrySerializableRetriesThenSucceeds(t *testing.T) {
 	calls := 0
 	op := scriptedOp(t, []error{serFail, serFail, nil}, &calls)
 
-	if err := retrySerializable(t.Context(), 3, op); err != nil {
+	if err := quiet.retrySerializable(t.Context(), 3, op); err != nil {
 		t.Errorf("retrySerializable = %v, want nil", err)
 	}
 
@@ -131,7 +133,7 @@ func TestRetrySerializableNonSerialErrorReturnsImmediately(t *testing.T) {
 	calls := 0
 	op := scriptedOp(t, []error{other}, &calls)
 
-	err := retrySerializable(t.Context(), 3, op)
+	err := quiet.retrySerializable(t.Context(), 3, op)
 	if !errors.Is(err, other) {
 		t.Errorf("retrySerializable = %v, want %v", err, other)
 	}
@@ -150,7 +152,7 @@ func TestRetrySerializableExhaustsRetries(t *testing.T) {
 	calls := 0
 	op := scriptedOp(t, []error{serFail, serFail, serFail, serFail}, &calls)
 
-	err := retrySerializable(t.Context(), 3, op)
+	err := quiet.retrySerializable(t.Context(), 3, op)
 	if !errors.Is(err, serFail) {
 		t.Errorf("retrySerializable = %v, want serFail", err)
 	}
@@ -176,7 +178,7 @@ func TestRetrySerializableContextCancelledMidLoop(t *testing.T) {
 		return serFail
 	}
 
-	err := retrySerializable(ctx, 3, op)
+	err := quiet.retrySerializable(ctx, 3, op)
 	if !errors.Is(err, serFail) {
 		t.Errorf("retrySerializable = %v, want serFail", err)
 	}
@@ -194,12 +196,50 @@ func TestRetrySerializableZeroRetries(t *testing.T) {
 	calls := 0
 	op := scriptedOp(t, []error{serFail}, &calls)
 
-	err := retrySerializable(t.Context(), 0, op)
+	err := quiet.retrySerializable(t.Context(), 0, op)
 	if !errors.Is(err, serFail) {
 		t.Errorf("retrySerializable = %v, want serFail", err)
 	}
 
 	if calls != 1 {
 		t.Errorf("calls = %d, want 1 (no retries when maxRetries=0)", calls)
+	}
+}
+
+// TestWithLoggerHearsTheRetry: the warning between serializable attempts
+// goes to the logger WithLogger set, with the attempt it follows.
+func TestWithLoggerHearsTheRetry(t *testing.T) {
+	var buf bytes.Buffer
+
+	cfg := &Config{Config: &pgxpool.Config{}}
+	WithLogger(slog.New(slog.NewTextHandler(&buf, nil)))(cfg)
+
+	db := &DB{logger: cfg.Logger}
+	serFail := &pgconn.PgError{Code: pgerrcode.SerializationFailure}
+
+	calls := 0
+	if err := db.retrySerializable(t.Context(), 3, scriptedOp(t, []error{serFail, nil}, &calls)); err != nil {
+		t.Fatalf("retrySerializable = %v, want nil", err)
+	}
+
+	for _, want := range []string{"level=WARN", `msg="retrying serializable transaction"`, "attempt=1"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("log = %q, want it to contain %q", buf.String(), want)
+		}
+	}
+}
+
+// TestOptionSetsPoolFieldsDirectly: Config embeds the pool config, so an
+// option written as a plain func reaches MaxConns and the rest without
+// going through a field.
+func TestOptionSetsPoolFieldsDirectly(t *testing.T) {
+	pool := &pgxpool.Config{}
+
+	var opt Option = func(cfg *Config) { cfg.MaxConns = 20 }
+
+	opt(&Config{Config: pool})
+
+	if pool.MaxConns != 20 {
+		t.Errorf("MaxConns = %d, want 20 on the embedded pool config", pool.MaxConns)
 	}
 }
