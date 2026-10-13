@@ -26,10 +26,14 @@ const (
 	// context set by a plugin survives the round trip.
 	headersAttr = "headers"
 
-	// Receive waits this long after a failed poll, doubling each time up to
-	// the ceiling and resetting on a poll that succeeds.
+	// Unless WithBackoff says otherwise, Receive waits this long after a
+	// failed poll, doubling each time up to the ceiling.
 	backoffBase    = time.Second
 	backoffCeiling = 30 * time.Second
+
+	// deleteTimeout bounds the delete of a handled message, which runs on a
+	// context detached from the caller's.
+	deleteTimeout = 5 * time.Second
 )
 
 // API is the slice of *sqs.Client this sink calls. Declaring it as an interface
@@ -51,9 +55,7 @@ type Sink struct {
 	waitSecs int32
 	batch    int32
 	logger   *slog.Logger
-
-	backoffBase    time.Duration
-	backoffCeiling time.Duration
+	backoff  func(attempt int) time.Duration
 }
 
 var _ events.Sink = (*Sink)(nil)
@@ -78,29 +80,39 @@ func WithLogger(l *slog.Logger) Option {
 	return func(s *Sink) { s.logger = l }
 }
 
-// withBackoff sets how long Receive waits after a failed poll: base, doubling
-// each time up to ceiling. The tests shorten it; the defaults suit a queue.
-func withBackoff(base, ceiling time.Duration) Option {
-	return func(s *Sink) { s.backoffBase, s.backoffCeiling = base, ceiling }
+// WithBackoff sets how long Receive waits after a failed poll. It's called
+// with the number of failures in a row (1 for the first), a good poll
+// resetting the count, and has the shape of events.RetryPolicy.Backoff, so
+// events.ExponentialBackoff and events.FixedBackoff both fit. Defaults to 1s
+// doubling to a 30s ceiling. ReceiveOnce never waits; its host decides.
+func WithBackoff(backoff func(attempt int) time.Duration) Option {
+	return func(s *Sink) { s.backoff = backoff }
 }
 
 // NewSink builds a Sink for the queue at queueURL.
 func NewSink(client API, queueURL string, opts ...Option) *Sink {
 	s := &Sink{
-		Dispatcher:     events.NewDispatcher(),
-		client:         client,
-		queueURL:       queueURL,
-		waitSecs:       20,
-		batch:          10,
-		backoffBase:    backoffBase,
-		backoffCeiling: backoffCeiling,
+		Dispatcher: events.NewDispatcher(),
+		client:     client,
+		queueURL:   queueURL,
+		waitSecs:   20,
+		batch:      10,
 	}
 
 	for _, opt := range opts {
 		opt(s)
 	}
 
+	if s.backoff == nil {
+		s.backoff = defaultBackoff
+	}
+
 	return s
+}
+
+// defaultBackoff is 1s doubling to a 30s ceiling.
+func defaultBackoff(attempt int) time.Duration {
+	return min(events.ExponentialBackoff(backoffBase)(attempt), backoffCeiling)
 }
 
 // log returns the configured logger, or the process default as of now.
@@ -137,17 +149,17 @@ func (s *Sink) Publish(ctx context.Context, env events.Envelope) error {
 }
 
 // Receive drives ReceiveOnce until ctx ends, which is the only way it
-// returns. A failed poll is logged and backed off (1s, doubling to 30s,
-// reset by the next good one) rather than retried hot. Call it once, after
-// the bus has registered its handlers, as the worker's main loop or a
-// goroutine.
+// returns. A failed poll is logged and backed off (see WithBackoff) rather
+// than retried hot. Call it after the bus has registered its handlers, as
+// the worker's main loop or a goroutine; a worker that wants to handle
+// messages in parallel runs several.
 func (s *Sink) Receive(ctx context.Context) error {
-	delay := s.backoffBase
+	var failures int
 
 	for {
 		_, err := s.ReceiveOnce(ctx)
 		if err == nil {
-			delay = s.backoffBase
+			failures = 0
 
 			continue
 		}
@@ -156,6 +168,9 @@ func (s *Sink) Receive(ctx context.Context) error {
 			return ctx.Err()
 		}
 
+		failures++
+		delay := s.backoff(failures)
+
 		s.log().ErrorContext(ctx, "sqs: receive failed",
 			slog.String("error", err.Error()), slog.Duration("backoff", delay))
 
@@ -163,7 +178,6 @@ func (s *Sink) Receive(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(delay):
-			delay = min(delay*2, s.backoffCeiling)
 		}
 	}
 }
@@ -231,11 +245,18 @@ func (s *Sink) handle(ctx context.Context, m types.Message) {
 		return
 	}
 
-	if _, err := s.client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+	// The handler is done, so the delete goes out even if ctx ended while it
+	// ran (a shutdown, say): skip it and the message is redelivered and
+	// handled twice. Detached from ctx, it gets a deadline of its own.
+	deleteCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), deleteTimeout)
+	defer cancel()
+
+	if _, err := s.client.DeleteMessage(deleteCtx, &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(s.queueURL),
 		ReceiptHandle: m.ReceiptHandle,
 	}); err != nil {
-		s.log().ErrorContext(ctx, "sqs: delete failed", slog.String("error", err.Error()))
+		s.log().ErrorContext(ctx, "sqs: delete failed",
+			slog.String("event", name), slog.String("error", err.Error()))
 	}
 }
 

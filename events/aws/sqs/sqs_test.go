@@ -5,9 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"log/slog"
+	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -19,11 +25,13 @@ import (
 )
 
 // fakeAPI is a scripted stand-in for the SQS client. SendMessage and
-// DeleteMessage record their inputs; ReceiveMessage fails with each of errs
-// first, then pops one batch per call and, once the script runs dry, blocks
-// until ctx is cancelled, which is how a test tells the receive loop to stop.
-// polls records when each ReceiveMessage call arrived.
+// DeleteMessage record their inputs, DeleteMessage refusing a dead ctx as the
+// real client does. ReceiveMessage answers with each of errs first (a nil one
+// falls through to the batches), then pops a batch per call and, once the
+// script runs dry, blocks until ctx is cancelled, which is how a test stops
+// the receive loop. polls records when each ReceiveMessage arrived.
 type fakeAPI struct {
+	mu      sync.Mutex
 	sent    []*awssqs.SendMessageInput
 	errs    []error
 	batches [][]types.Message
@@ -32,34 +40,60 @@ type fakeAPI struct {
 }
 
 func (f *fakeAPI) SendMessage(_ context.Context, in *awssqs.SendMessageInput, _ ...func(*awssqs.Options)) (*awssqs.SendMessageOutput, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.sent = append(f.sent, in)
 
 	return &awssqs.SendMessageOutput{}, nil
 }
 
 func (f *fakeAPI) ReceiveMessage(ctx context.Context, _ *awssqs.ReceiveMessageInput, _ ...func(*awssqs.Options)) (*awssqs.ReceiveMessageOutput, error) {
-	f.polls = append(f.polls, time.Now())
-
-	if len(f.errs) > 0 {
-		err := f.errs[0]
-		f.errs = f.errs[1:]
-
+	batch, ok, err := f.next()
+	if err != nil {
 		return nil, err
 	}
 
-	if len(f.batches) == 0 {
+	if !ok {
 		<-ctx.Done()
 
 		return nil, ctx.Err()
 	}
 
-	batch := f.batches[0]
-	f.batches = f.batches[1:]
-
 	return &awssqs.ReceiveMessageOutput{Messages: batch}, nil
 }
 
-func (f *fakeAPI) DeleteMessage(_ context.Context, in *awssqs.DeleteMessageInput, _ ...func(*awssqs.Options)) (*awssqs.DeleteMessageOutput, error) {
+// next pops the script's next poll: an error, a batch, or ok false once dry.
+func (f *fakeAPI) next() (batch []types.Message, ok bool, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.polls = append(f.polls, time.Now())
+
+	if len(f.errs) > 0 {
+		err, f.errs = f.errs[0], f.errs[1:]
+		if err != nil {
+			return nil, false, err
+		}
+	}
+
+	if len(f.batches) == 0 {
+		return nil, false, nil
+	}
+
+	batch, f.batches = f.batches[0], f.batches[1:]
+
+	return batch, true, nil
+}
+
+func (f *fakeAPI) DeleteMessage(ctx context.Context, in *awssqs.DeleteMessageInput, _ ...func(*awssqs.Options)) (*awssqs.DeleteMessageOutput, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.deleted = append(f.deleted, *in.ReceiptHandle)
 
 	return &awssqs.DeleteMessageOutput{}, nil
@@ -236,8 +270,10 @@ func TestReceiveOnceReportsThePoll(t *testing.T) {
 }
 
 // TestReceiveOnceStopsWhenContextEnds: a ctx that ends mid-batch stops the
-// dispatching there, the count so far comes back with ctx.Err(), and the
-// messages not reached stay on the queue. A dead ctx doesn't poll at all.
+// dispatching there and the count so far comes back with ctx.Err(). The
+// message already handled is still deleted, on a context of its own, or it
+// would come round again; the ones not reached stay on the queue. A dead ctx
+// doesn't poll at all.
 func TestReceiveOnceStopsWhenContextEnds(t *testing.T) {
 	fake := &fakeAPI{batches: [][]types.Message{{
 		message("user.created", `{"id":"1"}`, "r-1"),
@@ -269,7 +305,7 @@ func TestReceiveOnceStopsWhenContextEnds(t *testing.T) {
 	}
 
 	if len(fake.deleted) != 1 || fake.deleted[0] != "r-1" {
-		t.Errorf("deleted = %v, want [r-1]: the rest should stay on the queue", fake.deleted)
+		t.Errorf("deleted = %v, want [r-1]: a handled message is deleted even though ctx has ended, the rest stay", fake.deleted)
 	}
 
 	if n, err := sink.ReceiveOnce(ctx); n != 0 || !errors.Is(err, context.Canceled) {
@@ -281,40 +317,125 @@ func TestReceiveOnceStopsWhenContextEnds(t *testing.T) {
 	}
 }
 
-// TestReceiveBacksOffOnReceiveErrors: a failed poll pushes the next one back,
-// a second failure twice as far, and the loop carries on to the message after
-// them. Only lower bounds are checked; a sleep is never shorter than asked.
-func TestReceiveBacksOffOnReceiveErrors(t *testing.T) {
-	boom := errors.New("boom")
-	fake := &fakeAPI{
-		errs:    []error{boom, boom},
-		batches: [][]types.Message{{message("user.created", `{"id":"1"}`, "r-1")}},
-	}
-	sink := sqs.NewSink(fake, "https://queue.test/q", sqs.WithBackoff(20*time.Millisecond, time.Second))
+// gaps returns the time between each poll and the one before it.
+func gaps(polls []time.Time) []time.Duration {
+	out := make([]time.Duration, 0, len(polls))
 
-	handled := make(chan struct{}, 1)
+	for i := 1; i < len(polls); i++ {
+		out = append(out, polls[i].Sub(polls[i-1]))
+	}
+
+	return out
+}
+
+// TestReceiveBacksOffOnFailedPolls: failed polls wait 1s, doubling to the 30s
+// ceiling, a good poll puts the next failure back at 1s, and each failure is
+// logged at error. synctest's clock runs the real schedule instantly and
+// exactly, so the defaults are what's under test.
+func TestReceiveBacksOffOnFailedPolls(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		boom := errors.New("boom")
+
+		var buf bytes.Buffer
+
+		fake := &fakeAPI{
+			errs:    []error{boom, boom, boom, boom, boom, boom, boom, nil, boom},
+			batches: [][]types.Message{{}},
+		}
+		sink := sqs.NewSink(fake, "https://queue.test/q", sqs.WithLogger(slog.New(slog.NewTextHandler(&buf, nil))))
+
+		stop := receive(t, sink)
+
+		time.Sleep(time.Hour) // well past the script: the last poll is parked on ctx
+		stop()
+
+		want := []time.Duration{
+			time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second,
+			30 * time.Second, 30 * time.Second, // the ceiling
+			0,           // the good poll goes straight round again
+			time.Second, // and the failure after it starts over
+		}
+
+		if got := gaps(fake.polls); !slices.Equal(got, want) {
+			t.Errorf("gaps between polls = %v, want %v", got, want)
+		}
+
+		if got := strings.Count(buf.String(), `level=ERROR msg="sqs: receive failed"`); got != 8 {
+			t.Errorf("logged %d failed polls at error, want 8:\n%s", got, buf.String())
+		}
+	})
+}
+
+// TestWithBackoffSetsTheWait: the option takes the events.RetryPolicy.Backoff
+// shape, is asked with the number of failures in a row, and what it answers
+// is how long the loop waits.
+func TestWithBackoffSetsTheWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		boom := errors.New("boom")
+		fake := &fakeAPI{errs: []error{boom, boom, nil, boom}, batches: [][]types.Message{{}}}
+
+		var asked []int
+
+		sink := sqs.NewSink(fake, "https://queue.test/q",
+			sqs.WithLogger(slog.New(slog.DiscardHandler)),
+			sqs.WithBackoff(func(attempt int) time.Duration {
+				asked = append(asked, attempt)
+
+				return events.FixedBackoff(5 * time.Second)(attempt)
+			}),
+		)
+
+		stop := receive(t, sink)
+
+		time.Sleep(time.Hour)
+		stop()
+
+		if want := []int{1, 2, 1}; !slices.Equal(asked, want) {
+			t.Errorf("backoff asked with %v, want %v: a good poll resets the count", asked, want)
+		}
+
+		want := []time.Duration{5 * time.Second, 5 * time.Second, 0, 5 * time.Second}
+		if got := gaps(fake.polls); !slices.Equal(got, want) {
+			t.Errorf("gaps between polls = %v, want %v", got, want)
+		}
+	})
+}
+
+// TestReceiveOnceRunsInParallel: the sink keeps nothing between polls, so
+// several loops can share one, which is how a worker handles messages in
+// parallel. The race detector is the real assertion here.
+func TestReceiveOnceRunsInParallel(t *testing.T) {
+	const loops = 4
+
+	fake := &fakeAPI{}
+	for i := range loops {
+		fake.batches = append(fake.batches, []types.Message{message("user.created", `{"id":"1"}`, fmt.Sprintf("r-%d", i))})
+	}
+
+	sink := sqs.NewSink(fake, "https://queue.test/q")
+
+	var handled atomic.Int32
 
 	sink.Subscribe("user.created", func(_ context.Context, _ events.Envelope) error {
-		handled <- struct{}{}
+		handled.Add(1)
 
 		return nil
 	})
 
-	stop := receive(t, sink)
+	var wg sync.WaitGroup
 
-	<-handled
-	stop()
-
-	if len(fake.polls) < 3 {
-		t.Fatalf("polled %d times, want at least 3: two failures and the batch", len(fake.polls))
+	for range loops {
+		wg.Go(func() {
+			if n, err := sink.ReceiveOnce(t.Context()); n != 1 || err != nil {
+				t.Errorf("ReceiveOnce returned (%d, %v), want (1, nil)", n, err)
+			}
+		})
 	}
 
-	if gap := fake.polls[1].Sub(fake.polls[0]); gap < 20*time.Millisecond {
-		t.Errorf("second poll came %v after the first, want at least the 20ms backoff", gap)
-	}
+	wg.Wait()
 
-	if gap := fake.polls[2].Sub(fake.polls[1]); gap < 40*time.Millisecond {
-		t.Errorf("third poll came %v after the second, want at least the doubled 40ms", gap)
+	if handled.Load() != loops || len(fake.deleted) != loops {
+		t.Errorf("handled %d and deleted %v, want %d of each", handled.Load(), fake.deleted, loops)
 	}
 }
 
@@ -345,5 +466,38 @@ func TestWithLoggerHearsTheNack(t *testing.T) {
 
 	if len(fake.deleted) != 0 {
 		t.Errorf("deleted = %v, want none", fake.deleted)
+	}
+}
+
+// TestLogsThroughTheDefaultOfTheMoment: with no WithLogger the sink reads
+// slog.Default() as it logs, not as it's built, so a host that calls
+// slog.SetDefault after NewSink still hears it.
+func TestLogsThroughTheDefaultOfTheMoment(t *testing.T) {
+	fake := &fakeAPI{batches: [][]types.Message{{message("user.deleted", `{"id":"1"}`, "r-1")}}}
+	sink := sqs.NewSink(fake, "https://queue.test/q")
+
+	sink.Subscribe("user.deleted", func(_ context.Context, _ events.Envelope) error {
+		return events.New("boom", nil)
+	})
+
+	// SetDefault rewires the log package too, so all three go back after.
+	prev, out, flags := slog.Default(), log.Writer(), log.Flags()
+
+	t.Cleanup(func() {
+		slog.SetDefault(prev)
+		log.SetOutput(out)
+		log.SetFlags(flags)
+	})
+
+	var buf bytes.Buffer
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+
+	if _, err := sink.ReceiveOnce(t.Context()); err != nil {
+		t.Fatalf("ReceiveOnce: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), `msg="sqs: handler failed, leaving for redelivery"`) {
+		t.Errorf("log = %q, want the nack on the default set after NewSink", buf.String())
 	}
 }

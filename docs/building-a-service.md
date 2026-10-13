@@ -362,7 +362,8 @@ The parts are designed to be swapped without the application changing:
 - MemSink to a real transport: construct an SQS or Pub/Sub sink from
   [`events/aws`](../events/aws) or [`events/gcp`](../events/gcp) instead.
   Handlers, events, and emit sites stay identical; a worker binary calls
-  `sink.Receive(ctx)`, or a push subscription POSTs into the mounted sink.
+  `sink.Receive(ctx)` (or, on SQS, `ReceiveOnce` from a loop it already
+  has), or a push subscription POSTs into the mounted sink.
 - Consumers as HTTP endpoints: `bus.RegisterEndpoint(rg, handler)` serves
   any consumer at `POST /events/{name}`, useful when the transport pushes
   events over HTTP or another service wants to hand you one synchronously.
