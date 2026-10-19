@@ -9,7 +9,7 @@ go 1.27
 require (
 	cloud.google.com/go/pubsub/v2 v2.7.0
 	github.com/duffleone/dfl v0.0.0-20261013131932-5debd659452b
-	google.golang.org/api v0.302.0
+	google.golang.org/api v0.304.0
 	google.golang.org/grpc v1.84.0
 )
 
