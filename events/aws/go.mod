@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.9
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.55.3
 	github.com/aws/aws-sdk-go-v2/service/sns v1.47.5
-	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.4
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.5
 	github.com/duffleone/dfl v0.0.0-20261013131932-5debd659452b
 )
 
